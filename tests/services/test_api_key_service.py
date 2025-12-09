@@ -256,16 +256,43 @@ class TestAPIKeyServiceProviderOverrides:
     @pytest.mark.asyncio
     async def test_update_provider_overrides(self, test_db):
         """Can set provider key overrides."""
+        from app.models import Organization, Group, ProviderAccount, Provider
+
         async with test_db() as session:
             user = User(email="test@example.com", password_hash="hash123")
             session.add(user)
             await session.commit()
             await session.refresh(user)
 
+            # Create the full hierarchy for provider key
+            org = Organization(name="Test Org", owner_id=user.id)
+            session.add(org)
+            await session.commit()
+            await session.refresh(org)
+
+            group = Group(organization_id=org.id, name="Default", created_by_id=user.id)
+            session.add(group)
+            await session.commit()
+            await session.refresh(group)
+
+            provider = Provider(id="openai", name="OpenAI")
+            session.add(provider)
+            await session.commit()
+
+            account = ProviderAccount(
+                group_id=group.id,
+                provider_id="openai",
+                name="Default Account",
+                created_by_id=user.id
+            )
+            session.add(account)
+            await session.commit()
+            await session.refresh(account)
+
             # Create a provider key
             provider_key = ProviderKey(
+                provider_account_id=account.id,
                 user_id=user.id,
-                provider="openai",
                 encrypted_key="encrypted_value",
                 name="My OpenAI Key",
             )
@@ -291,6 +318,8 @@ class TestAPIKeyServiceProviderOverrides:
     @pytest.mark.asyncio
     async def test_update_provider_overrides_validates_ownership(self, test_db):
         """Overrides must reference keys owned by the user."""
+        from app.models import Organization, Group, ProviderAccount, Provider
+
         async with test_db() as session:
             user1 = User(email="user1@example.com", password_hash="hash123")
             user2 = User(email="user2@example.com", password_hash="hash456")
@@ -300,10 +329,35 @@ class TestAPIKeyServiceProviderOverrides:
             await session.refresh(user1)
             await session.refresh(user2)
 
+            # Create the full hierarchy for user2's provider key
+            org = Organization(name="Test Org", owner_id=user2.id)
+            session.add(org)
+            await session.commit()
+            await session.refresh(org)
+
+            group = Group(organization_id=org.id, name="Default", created_by_id=user2.id)
+            session.add(group)
+            await session.commit()
+            await session.refresh(group)
+
+            provider = Provider(id="openai", name="OpenAI")
+            session.add(provider)
+            await session.commit()
+
+            account = ProviderAccount(
+                group_id=group.id,
+                provider_id="openai",
+                name="Default Account",
+                created_by_id=user2.id
+            )
+            session.add(account)
+            await session.commit()
+            await session.refresh(account)
+
             # Create a provider key for user2
             provider_key = ProviderKey(
+                provider_account_id=account.id,
                 user_id=user2.id,
-                provider="openai",
                 encrypted_key="encrypted_value",
                 name="User2 Key",
             )

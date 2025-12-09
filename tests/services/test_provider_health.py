@@ -11,10 +11,16 @@ from app.services.provider_health import (
 
 @pytest.fixture
 def fresh_tracker():
-    """Create a fresh tracker instance for testing (bypass singleton)."""
+    """Create a fresh tracker instance for testing (bypass singleton).
+
+    This creates a minimal tracker that doesn't persist to database.
+    """
     tracker = object.__new__(ProviderHealthTracker)
     tracker._providers = {}
     tracker._initialized = True
+    tracker._db_initialized = True  # Pretend DB is already initialized
+    tracker._pending_writes = []
+    tracker._write_task = None
     return tracker
 
 

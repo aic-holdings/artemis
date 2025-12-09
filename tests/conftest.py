@@ -62,7 +62,7 @@ async def client(test_db):
 
 @pytest.fixture
 async def authenticated_client(client, test_db):
-    """Create an authenticated test client."""
+    """Create an authenticated test client with organization and group."""
     # Register a user
     response = await client.post(
         "/register",
@@ -73,5 +73,67 @@ async def authenticated_client(client, test_db):
     # Get session cookie
     cookies = response.cookies
     client.cookies = cookies
+
+    # Create organization and group for the test user
+    # This is needed because provider keys now require a group context
+    async with test_db() as session:
+        from sqlalchemy import select
+        from app.models import User, Organization, Group, GroupMember, Provider
+
+        # Get the user
+        result = await session.execute(
+            select(User).where(User.email == "testuser@example.com")
+        )
+        user = result.scalar_one()
+
+        # Create organization
+        org = Organization(name="Test Organization", owner_id=user.id)
+        session.add(org)
+        await session.commit()
+        await session.refresh(org)
+
+        # Create default group
+        group = Group(
+            organization_id=org.id,
+            name="Default",
+            is_default=True,
+            created_by_id=user.id
+        )
+        session.add(group)
+        await session.commit()
+        await session.refresh(group)
+
+        # Add user as group member (admin)
+        member = GroupMember(
+            group_id=group.id,
+            user_id=user.id,
+            role="admin"
+        )
+        session.add(member)
+
+        # Update user's organization and settings
+        user.organization_id = org.id
+        user.settings = {
+            "last_org_id": org.id,
+            "last_group_id": group.id
+        }
+        await session.commit()
+
+        # Create provider records
+        providers = [
+            Provider(id="openai", name="OpenAI"),
+            Provider(id="anthropic", name="Anthropic"),
+            Provider(id="google", name="Google"),
+            Provider(id="perplexity", name="Perplexity"),
+            Provider(id="openrouter", name="OpenRouter"),
+        ]
+        for provider in providers:
+            # Check if provider already exists
+            existing = await session.execute(
+                select(Provider).where(Provider.id == provider.id)
+            )
+            if not existing.scalar_one_or_none():
+                session.add(provider)
+        await session.commit()
 
     yield client
