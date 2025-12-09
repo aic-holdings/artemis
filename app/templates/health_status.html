@@ -1,0 +1,221 @@
+{% extends "base.html" %}
+
+{% block title %}Health Status - Artemis{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 py-8">
+    <div class="flex justify-between items-center mb-8">
+        <h1 class="text-3xl font-bold">Provider Health Status</h1>
+        <div class="flex items-center space-x-4">
+            <span id="last-updated" class="text-sm text-gray-500">Updated just now</span>
+            <button onclick="refreshHealth()" class="bg-gray-100 hover:bg-gray-200 px-3 py-2 rounded-lg text-sm">
+                Refresh
+            </button>
+        </div>
+    </div>
+
+    <!-- Overall Status Banner -->
+    <div id="status-banner" class="mb-8 p-4 rounded-lg {% if all_healthy %}bg-green-50 border border-green-200{% elif unhealthy_providers %}bg-red-50 border border-red-200{% else %}bg-yellow-50 border border-yellow-200{% endif %}">
+        <div class="flex items-center">
+            {% if all_healthy %}
+            <svg class="w-6 h-6 text-green-500 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
+            <span class="text-green-700 font-medium">All providers are healthy</span>
+            {% elif unhealthy_providers %}
+            <svg class="w-6 h-6 text-red-500 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
+            <span class="text-red-700 font-medium">{{ unhealthy_providers|length }} provider(s) unhealthy: {{ unhealthy_providers|join(', ') }}</span>
+            {% else %}
+            <svg class="w-6 h-6 text-yellow-500 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+            </svg>
+            <span class="text-yellow-700 font-medium">{{ degraded_providers|length }} provider(s) degraded: {{ degraded_providers|join(', ') }}</span>
+            {% endif %}
+        </div>
+    </div>
+
+    {% if providers %}
+    <!-- Provider Cards Grid -->
+    <div id="providers-grid" class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {% for provider_name, health in providers.items() %}
+        <div class="bg-white rounded-xl shadow-sm border p-6 provider-card" data-provider="{{ provider_name }}">
+            <!-- Provider Header -->
+            <div class="flex justify-between items-start mb-4">
+                <div>
+                    <h2 class="text-xl font-semibold capitalize">{{ provider_name }}</h2>
+                    <span class="inline-block px-2 py-1 text-xs rounded-full mt-1
+                        {% if health.status == 'healthy' %}bg-green-100 text-green-700
+                        {% elif health.status == 'degraded' %}bg-yellow-100 text-yellow-700
+                        {% else %}bg-red-100 text-red-700{% endif %}">
+                        {{ health.status|upper }}
+                    </span>
+                </div>
+                <div class="text-right">
+                    <div class="text-2xl font-bold {% if health.error_rate > 50 %}text-red-600{% elif health.error_rate > 10 %}text-yellow-600{% else %}text-green-600{% endif %}">
+                        {{ "%.1f"|format(100 - health.error_rate) }}%
+                    </div>
+                    <div class="text-xs text-gray-500">success rate</div>
+                </div>
+            </div>
+
+            <!-- Stats -->
+            <div class="grid grid-cols-2 gap-4 mb-4">
+                <div>
+                    <div class="text-gray-500 text-xs">Recent Requests</div>
+                    <div class="font-semibold">{{ health.recent_requests }}</div>
+                </div>
+                <div>
+                    <div class="text-gray-500 text-xs">Total Requests</div>
+                    <div class="font-semibold">{{ "{:,}".format(health.total_requests) }}</div>
+                </div>
+                <div>
+                    <div class="text-gray-500 text-xs">Avg Latency</div>
+                    <div class="font-semibold">{{ health.avg_latency_ms or '-' }}{% if health.avg_latency_ms %}ms{% endif %}</div>
+                </div>
+                <div>
+                    <div class="text-gray-500 text-xs">P95 Latency</div>
+                    <div class="font-semibold">{{ health.p95_latency_ms or '-' }}{% if health.p95_latency_ms %}ms{% endif %}</div>
+                </div>
+            </div>
+
+            <!-- Success/Failure breakdown -->
+            <div class="mb-4">
+                <div class="flex justify-between text-xs text-gray-500 mb-1">
+                    <span>Recent: {{ health.recent_successes }} ok / {{ health.recent_failures }} fail</span>
+                    <span>{{ health.total_timeouts }} timeouts</span>
+                </div>
+                <div class="w-full bg-gray-200 rounded-full h-2">
+                    {% set success_pct = (100 - health.error_rate) if health.recent_requests > 0 else 100 %}
+                    <div class="h-2 rounded-full {% if health.status == 'healthy' %}bg-green-500{% elif health.status == 'degraded' %}bg-yellow-500{% else %}bg-red-500{% endif %}" style="width: {{ success_pct }}%"></div>
+                </div>
+            </div>
+
+            <!-- Sparkline - Error Rate Over Time -->
+            {% if health.sparkline and health.sparkline|length > 1 %}
+            <div class="mb-4">
+                <div class="text-xs text-gray-500 mb-2">Error Rate (Last 5 min)</div>
+                <div class="flex items-end h-8 gap-0.5" title="Error rate over time">
+                    {% for bucket in health.sparkline %}
+                    {% set bar_height = bucket.error_rate if bucket.error_rate <= 100 else 100 %}
+                    {% set bar_color = 'bg-green-400' if bucket.error_rate < 10 else ('bg-yellow-400' if bucket.error_rate < 50 else 'bg-red-400') %}
+                    <div class="flex-1 {{ bar_color }} rounded-t transition-all"
+                         style="height: {{ [bar_height, 10]|max }}%; min-height: 2px;"
+                         title="{{ bucket.successes }} ok, {{ bucket.failures }} fail ({{ bucket.error_rate }}% error)"></div>
+                    {% endfor %}
+                </div>
+                <div class="flex justify-between text-xs text-gray-400 mt-1">
+                    <span>5m ago</span>
+                    <span>now</span>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Error Type Breakdown -->
+            {% if health.error_type_breakdown and health.error_type_breakdown|length > 0 %}
+            <div class="mb-4">
+                <div class="text-xs text-gray-500 mb-2">Error Types</div>
+                <div class="space-y-1">
+                    {% for error_type, count in health.error_type_breakdown.items() %}
+                    <div class="flex justify-between items-center text-xs">
+                        <span class="text-gray-600 truncate mr-2">{{ error_type }}</span>
+                        <span class="font-medium text-red-600">{{ count }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Last Error -->
+            {% if health.last_error %}
+            <div class="bg-red-50 rounded-lg p-3 text-sm">
+                <div class="flex justify-between items-start mb-1">
+                    <span class="text-red-700 font-medium">{{ health.last_error_type or 'error' }}</span>
+                    <span class="text-red-500 text-xs">{{ health.last_error_age_seconds }}s ago</span>
+                </div>
+                <div class="text-red-600 text-xs truncate" title="{{ health.last_error }}">
+                    {{ health.last_error[:100] }}{% if health.last_error|length > 100 %}...{% endif %}
+                </div>
+            </div>
+            {% else %}
+            <div class="bg-gray-50 rounded-lg p-3 text-sm text-gray-500 text-center">
+                No recent errors
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <!-- No Data State -->
+    <div class="bg-white rounded-xl shadow-sm border p-12 text-center">
+        <svg class="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+        </svg>
+        <h3 class="text-xl font-medium text-gray-700 mb-2">No Provider Data Yet</h3>
+        <p class="text-gray-500 mb-6">Health metrics will appear here once requests are made through the proxy.</p>
+        <a href="/guide" class="text-primary hover:text-indigo-700">View setup guide</a>
+    </div>
+    {% endif %}
+
+    <!-- Info Section -->
+    <div class="mt-8 bg-gray-50 rounded-lg p-6">
+        <h3 class="font-medium text-gray-700 mb-3">Understanding Health Status</h3>
+        <div class="grid md:grid-cols-3 gap-4 text-sm">
+            <div>
+                <span class="inline-block w-3 h-3 rounded-full bg-green-500 mr-2"></span>
+                <span class="font-medium">Healthy</span>
+                <p class="text-gray-500 mt-1">Less than 10% error rate in the last 5 minutes</p>
+            </div>
+            <div>
+                <span class="inline-block w-3 h-3 rounded-full bg-yellow-500 mr-2"></span>
+                <span class="font-medium">Degraded</span>
+                <p class="text-gray-500 mt-1">10-50% error rate - provider experiencing issues</p>
+            </div>
+            <div>
+                <span class="inline-block w-3 h-3 rounded-full bg-red-500 mr-2"></span>
+                <span class="font-medium">Unhealthy</span>
+                <p class="text-gray-500 mt-1">Over 50% error rate - provider likely down</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let lastUpdate = new Date();
+
+function updateLastUpdatedText() {
+    const now = new Date();
+    const seconds = Math.floor((now - lastUpdate) / 1000);
+    const el = document.getElementById('last-updated');
+    if (seconds < 5) {
+        el.textContent = 'Updated just now';
+    } else if (seconds < 60) {
+        el.textContent = `Updated ${seconds}s ago`;
+    } else {
+        el.textContent = `Updated ${Math.floor(seconds / 60)}m ago`;
+    }
+}
+
+async function refreshHealth() {
+    try {
+        const response = await fetch('/api/health-status');
+        if (response.ok) {
+            const data = await response.json();
+            lastUpdate = new Date();
+            updateLastUpdatedText();
+            // For now, just reload the page. Could update DOM directly for smoother UX.
+            location.reload();
+        }
+    } catch (e) {
+        console.error('Failed to refresh health status:', e);
+    }
+}
+
+// Update "last updated" text every 5 seconds
+setInterval(updateLastUpdatedText, 5000);
+
+// Auto-refresh every 30 seconds
+setInterval(refreshHealth, 30000);
+</script>
+{% endblock %}

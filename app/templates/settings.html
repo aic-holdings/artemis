@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+
+{% block title %}Settings - Artemis{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto px-4 py-8">
+    <h1 class="text-3xl font-bold text-primary mb-8">Settings</h1>
+
+    {% if error %}
+    <div class="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+        <p class="text-red-800">{{ error }}</p>
+    </div>
+    {% endif %}
+
+    <!-- Account Section -->
+    <div class="bg-white rounded-lg shadow p-6 mb-6">
+        <h2 class="text-xl font-semibold text-gray-800 mb-4">Account</h2>
+        <div class="space-y-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-500">Email</label>
+                <p class="text-gray-900">{{ user.email }}</p>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-500">Account Tier</label>
+                <p class="text-gray-900 capitalize">{{ user.tier or 'free' }}</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Organization Switcher -->
+    <div class="bg-white rounded-lg shadow p-6 mb-6">
+        <h2 class="text-xl font-semibold text-gray-800 mb-4">Organization View</h2>
+        <p class="text-gray-600 mb-4">
+            Switch between organizations to view their data. When viewing an organization,
+            the dashboard and logs will show that organization's data.
+        </p>
+
+        {% if active_org %}
+        <div class="mb-4 p-4 bg-indigo-50 rounded-lg border border-indigo-200">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-sm text-indigo-600 font-medium">Currently Viewing</p>
+                    <p class="text-lg font-semibold text-indigo-900">{{ active_org.name }}</p>
+                </div>
+                <form action="/clear-org" method="POST">
+                    <button type="submit"
+                            class="px-4 py-2 text-sm bg-white border border-gray-300 rounded-md hover:bg-gray-50">
+                        Clear Selection
+                    </button>
+                </form>
+            </div>
+        </div>
+        {% else %}
+        <div class="mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+            <p class="text-gray-600">
+                No organization selected. Viewing your personal data only.
+            </p>
+        </div>
+        {% endif %}
+
+        {% if organizations %}
+        <div class="space-y-2">
+            <label class="block text-sm font-medium text-gray-700">Available Organizations</label>
+            {% for org in organizations %}
+            <form action="/switch-org" method="POST" class="inline-block mr-2 mb-2">
+                <input type="hidden" name="org_id" value="{{ org.id }}">
+                <button type="submit"
+                        class="px-4 py-2 text-sm rounded-md border
+                        {% if active_org and active_org.id == org.id %}
+                        bg-indigo-100 border-indigo-300 text-indigo-700
+                        {% else %}
+                        bg-white border-gray-300 text-gray-700 hover:bg-gray-50
+                        {% endif %}">
+                    {{ org.name }}
+                </button>
+            </form>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="bg-amber-50 border border-amber-200 rounded-lg p-4">
+            <p class="text-amber-800 mb-3">No organizations available. Create one below or load demo data to get started.</p>
+            <form action="/load-demo-data" method="POST">
+                <button type="submit"
+                        class="px-4 py-2 bg-amber-600 text-white rounded-md hover:bg-amber-700 font-medium">
+                    Load Demo Data
+                </button>
+            </form>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Create Organization -->
+    <div class="bg-white rounded-lg shadow p-6 mb-6">
+        <h2 class="text-xl font-semibold text-gray-800 mb-4">Create Organization</h2>
+        <p class="text-gray-600 mb-4">
+            Create a new organization to manage API keys, provider keys, and team members.
+        </p>
+        <form action="/create-org" method="POST" class="flex gap-3">
+            <input type="text" name="name" placeholder="Organization name"
+                   class="flex-1 px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-secondary focus:border-secondary"
+                   required>
+            <button type="submit"
+                    class="px-6 py-2 btn-secondary text-white rounded-md font-medium">
+                Create
+            </button>
+        </form>
+    </div>
+
+    <!-- Quick Links -->
+    <div class="bg-white rounded-lg shadow p-6">
+        <h2 class="text-xl font-semibold text-gray-800 mb-4">Quick Links</h2>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <a href="/api-keys" class="p-4 border rounded-lg hover:bg-gray-50 text-center">
+                <div class="text-2xl mb-2">🔑</div>
+                <div class="text-sm text-gray-700">API Keys</div>
+            </a>
+            <a href="/providers" class="p-4 border rounded-lg hover:bg-gray-50 text-center">
+                <div class="text-2xl mb-2">🔌</div>
+                <div class="text-sm text-gray-700">Providers</div>
+            </a>
+            <a href="/guide" class="p-4 border rounded-lg hover:bg-gray-50 text-center">
+                <div class="text-2xl mb-2">📖</div>
+                <div class="text-sm text-gray-700">Guide</div>
+            </a>
+            <a href="/docs" class="p-4 border rounded-lg hover:bg-gray-50 text-center">
+                <div class="text-2xl mb-2">📄</div>
+                <div class="text-sm text-gray-700">API Docs</div>
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,177 @@
+{% extends "base.html" %}
+
+{% block title %}Application Logs - Artemis{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 py-8">
+    <div class="flex justify-between items-center mb-8">
+        <div>
+            <h1 class="text-3xl font-bold">Application Logs</h1>
+            <p class="text-gray-500 mt-1">Frontend and backend error logs</p>
+        </div>
+
+        <!-- Filters -->
+        <div class="flex items-center space-x-4">
+            <form method="GET" class="flex items-center space-x-3 flex-wrap gap-2" id="filter-form">
+                <select name="source" class="border rounded-lg px-3 py-2 text-sm" onchange="this.form.submit()">
+                    <option value="">All Sources</option>
+                    {% for s in sources %}
+                    <option value="{{ s }}" {% if filter_source == s %}selected{% endif %}>{{ s|capitalize }}</option>
+                    {% endfor %}
+                </select>
+                <select name="level" class="border rounded-lg px-3 py-2 text-sm" onchange="this.form.submit()">
+                    <option value="">All Levels</option>
+                    {% for l in levels %}
+                    <option value="{{ l }}" {% if filter_level == l %}selected{% endif %}>{{ l|upper }}</option>
+                    {% endfor %}
+                </select>
+                <select name="error_type" class="border rounded-lg px-3 py-2 text-sm" onchange="this.form.submit()">
+                    <option value="">All Types</option>
+                    {% for t in error_types %}
+                    <option value="{{ t }}" {% if filter_error_type == t %}selected{% endif %}>{{ t }}</option>
+                    {% endfor %}
+                </select>
+                {% if filter_source or filter_level or filter_error_type %}
+                <a href="/app-logs" class="text-sm text-gray-500 hover:text-gray-700">Clear filters</a>
+                {% endif %}
+            </form>
+        </div>
+    </div>
+
+    <!-- Logs List -->
+    <div class="bg-white rounded-xl shadow-sm border overflow-hidden">
+        {% if logs %}
+        <div class="divide-y">
+            {% for log in logs %}
+            <div class="p-4 hover:bg-gray-50 cursor-pointer" onclick="toggleDetails('log-{{ log.id }}')">
+                <div class="flex items-start justify-between">
+                    <div class="flex items-center space-x-3">
+                        <!-- Level Badge -->
+                        {% if log.level == 'error' %}
+                        <span class="px-2 py-1 text-xs font-medium rounded-full bg-red-100 text-red-700">ERROR</span>
+                        {% elif log.level == 'warn' %}
+                        <span class="px-2 py-1 text-xs font-medium rounded-full bg-yellow-100 text-yellow-700">WARN</span>
+                        {% elif log.level == 'info' %}
+                        <span class="px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-700">INFO</span>
+                        {% else %}
+                        <span class="px-2 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-700">{{ log.level|upper }}</span>
+                        {% endif %}
+
+                        <!-- Source Badge -->
+                        {% if log.source == 'frontend' %}
+                        <span class="px-2 py-1 text-xs font-medium rounded-full bg-purple-100 text-purple-700">Frontend</span>
+                        {% else %}
+                        <span class="px-2 py-1 text-xs font-medium rounded-full bg-indigo-100 text-indigo-700">Backend</span>
+                        {% endif %}
+
+                        <!-- Error Type -->
+                        {% if log.error_type %}
+                        <span class="text-sm text-gray-600 font-mono">{{ log.error_type }}</span>
+                        {% endif %}
+                    </div>
+                    <div class="text-sm text-gray-500">
+                        {{ log.created_at.strftime('%Y-%m-%d %H:%M:%S') }}
+                    </div>
+                </div>
+
+                <!-- Message -->
+                <div class="mt-2 text-sm text-gray-800 font-medium truncate">
+                    {{ log.message[:200] }}{% if log.message|length > 200 %}...{% endif %}
+                </div>
+
+                <!-- Page/Component info -->
+                {% if log.page or log.component %}
+                <div class="mt-1 text-xs text-gray-500">
+                    {% if log.page %}Page: {{ log.page }}{% endif %}
+                    {% if log.page and log.component %} | {% endif %}
+                    {% if log.component %}Component: {{ log.component }}{% endif %}
+                </div>
+                {% endif %}
+
+                <!-- Expandable Details -->
+                <div id="log-{{ log.id }}" class="hidden mt-4 border-t pt-4">
+                    <!-- Full Message -->
+                    <div class="mb-4">
+                        <div class="text-xs font-medium text-gray-500 mb-1">Full Message</div>
+                        <div class="text-sm text-gray-800 bg-gray-50 p-3 rounded font-mono whitespace-pre-wrap break-all">{{ log.message }}</div>
+                    </div>
+
+                    <!-- Stack Trace -->
+                    {% if log.stack_trace %}
+                    <div class="mb-4">
+                        <div class="text-xs font-medium text-gray-500 mb-1">Stack Trace</div>
+                        <pre class="text-xs text-gray-700 bg-gray-900 text-gray-100 p-3 rounded overflow-x-auto whitespace-pre-wrap">{{ log.stack_trace }}</pre>
+                    </div>
+                    {% endif %}
+
+                    <!-- Extra Data -->
+                    {% if log.extra_data %}
+                    <div class="mb-4">
+                        <div class="text-xs font-medium text-gray-500 mb-1">Extra Data</div>
+                        <pre class="text-xs text-gray-700 bg-gray-50 p-3 rounded overflow-x-auto">{{ log.extra_data | tojson(indent=2) }}</pre>
+                    </div>
+                    {% endif %}
+
+                    <!-- User Agent -->
+                    {% if log.user_agent %}
+                    <div>
+                        <div class="text-xs font-medium text-gray-500 mb-1">User Agent</div>
+                        <div class="text-xs text-gray-600 font-mono">{{ log.user_agent }}</div>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <!-- Pagination -->
+        <div class="px-4 py-3 bg-gray-50 border-t flex items-center justify-between">
+            <div class="text-sm text-gray-500">
+                Showing {{ ((page - 1) * per_page) + 1 }} - {{ [page * per_page, total_count]|min }} of {{ total_count }} logs
+            </div>
+            <div class="flex space-x-2">
+                {% set filter_params %}{% if filter_source %}&source={{ filter_source }}{% endif %}{% if filter_level %}&level={{ filter_level }}{% endif %}{% if filter_error_type %}&error_type={{ filter_error_type }}{% endif %}{% endset %}
+
+                {% if page > 1 %}
+                <a href="?page={{ page - 1 }}{{ filter_params }}"
+                   class="px-3 py-1 border rounded text-sm hover:bg-gray-100">Previous</a>
+                {% endif %}
+
+                {% for p in range(1, total_pages + 1) %}
+                    {% if p == page %}
+                    <span class="px-3 py-1 bg-primary text-white rounded text-sm">{{ p }}</span>
+                    {% elif p == 1 or p == total_pages or (p >= page - 2 and p <= page + 2) %}
+                    <a href="?page={{ p }}{{ filter_params }}"
+                       class="px-3 py-1 border rounded text-sm hover:bg-gray-100">{{ p }}</a>
+                    {% elif p == page - 3 or p == page + 3 %}
+                    <span class="px-3 py-1 text-gray-400">...</span>
+                    {% endif %}
+                {% endfor %}
+
+                {% if page < total_pages %}
+                <a href="?page={{ page + 1 }}{{ filter_params }}"
+                   class="px-3 py-1 border rounded text-sm hover:bg-gray-100">Next</a>
+                {% endif %}
+            </div>
+        </div>
+        {% else %}
+        <div class="p-8 text-center text-gray-500">
+            <svg class="w-12 h-12 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
+            <p class="mb-2 font-medium">No application logs found</p>
+            <p class="text-sm">Frontend and backend errors will appear here when they occur.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+function toggleDetails(id) {
+    const el = document.getElementById(id);
+    if (el) {
+        el.classList.toggle('hidden');
+    }
+}
+</script>
+{% endblock %}

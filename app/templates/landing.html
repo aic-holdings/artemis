@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+
+{% block title %}Artemis - AI Management Platform{% endblock %}
+
+{% block content %}
+<!-- Hero Section -->
+<section class="gradient-bg text-white py-20">
+    <div class="max-w-7xl mx-auto px-4 text-center">
+        <h1 class="text-5xl font-bold mb-6">Artemis: AI Management Platform</h1>
+        <p class="text-xl mb-8 max-w-3xl mx-auto">
+            A simple platform to manage, track, and improve all your AI and LLM calls.
+            See what's happening with your AI, make it work better, and achieve up to 80% LLM cost savings.
+        </p>
+        <div class="space-x-4">
+            <a href="/register" class="bg-white text-primary px-8 py-3 rounded-lg font-semibold hover:bg-gray-100">Get Started</a>
+            <a href="#features" class="border border-white px-8 py-3 rounded-lg font-semibold hover:bg-white/10">Learn More</a>
+        </div>
+    </div>
+</section>
+
+<!-- Key Features -->
+<section id="features" class="py-20">
+    <div class="max-w-7xl mx-auto px-4">
+        <h2 class="text-3xl font-bold text-center mb-12">Key Features</h2>
+        <div class="grid md:grid-cols-3 gap-8">
+            <div class="bg-white p-6 rounded-xl shadow-sm border">
+                <div class="w-12 h-12 bg-indigo-100 rounded-lg flex items-center justify-center mb-4">
+                    <svg class="w-6 h-6 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                    </svg>
+                </div>
+                <h3 class="text-xl font-semibold mb-2">Complete Visibility</h3>
+                <p class="text-gray-600">See everything that's happening with your AI tools in one place - no more guessing or missing information.</p>
+            </div>
+            <div class="bg-white p-6 rounded-xl shadow-sm border">
+                <div class="w-12 h-12 bg-indigo-100 rounded-lg flex items-center justify-center mb-4">
+                    <svg class="w-6 h-6 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                    </svg>
+                </div>
+                <h3 class="text-xl font-semibold mb-2">Provider-Native Passthrough</h3>
+                <p class="text-gray-600">Use each provider's full SDK features - tool use, search, streaming - all native functionality preserved.</p>
+            </div>
+            <div class="bg-white p-6 rounded-xl shadow-sm border">
+                <div class="w-12 h-12 bg-indigo-100 rounded-lg flex items-center justify-center mb-4">
+                    <svg class="w-6 h-6 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                </div>
+                <h3 class="text-xl font-semibold mb-2">Unified Cost Tracking</h3>
+                <p class="text-gray-600">Track costs across OpenAI, Anthropic, Google, Perplexity, and OpenRouter - all in one dashboard.</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- How It Works -->
+<section class="py-20 bg-gray-100">
+    <div class="max-w-7xl mx-auto px-4">
+        <h2 class="text-3xl font-bold text-center mb-12">How It Works</h2>
+        <div class="grid md:grid-cols-3 gap-8">
+            <div class="text-center">
+                <div class="w-16 h-16 bg-primary text-white rounded-full flex items-center justify-center text-2xl font-bold mx-auto mb-4">1</div>
+                <h3 class="text-xl font-semibold mb-2">Add Your API Keys</h3>
+                <p class="text-gray-600">Add your existing OpenAI, Anthropic, Google, etc. API keys to Artemis.</p>
+            </div>
+            <div class="text-center">
+                <div class="w-16 h-16 bg-primary text-white rounded-full flex items-center justify-center text-2xl font-bold mx-auto mb-4">2</div>
+                <h3 class="text-xl font-semibold mb-2">Get Your Artemis Key</h3>
+                <p class="text-gray-600">Generate a single Artemis API key that works with all providers.</p>
+            </div>
+            <div class="text-center">
+                <div class="w-16 h-16 bg-primary text-white rounded-full flex items-center justify-center text-2xl font-bold mx-auto mb-4">3</div>
+                <h3 class="text-xl font-semibold mb-2">Change base_url</h3>
+                <p class="text-gray-600">Point your existing SDK at Artemis. That's it - full visibility.</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Code Example -->
+<section class="py-20">
+    <div class="max-w-4xl mx-auto px-4">
+        <h2 class="text-3xl font-bold text-center mb-8">Ready in 60 Seconds</h2>
+        <div class="bg-gray-900 rounded-xl p-6 text-sm">
+            <div class="flex space-x-2 mb-4">
+                <span class="px-3 py-1 bg-gray-700 text-white rounded text-xs">Python</span>
+            </div>
+            <pre class="text-green-400 overflow-x-auto"><code># Use your existing Anthropic code - just change base_url
+import anthropic
+
+client = anthropic.Anthropic(
+    base_url="https://your-artemis.com/v1/anthropic",
+    api_key="art_your_artemis_key"  # Your Artemis key
+)
+
+# Full native Anthropic features work!
+response = client.messages.create(
+    model="claude-3-5-sonnet-latest",
+    max_tokens=1024,
+    messages=[{"role": "user", "content": "Hello!"}],
+    tools=[...]  # Native tool use works
+)
+
+# Same for OpenAI
+from openai import OpenAI
+client = OpenAI(
+    base_url="https://your-artemis.com/v1/openai",
+    api_key="art_your_artemis_key"
+)
+</code></pre>
+        </div>
+    </div>
+</section>
+
+<!-- Supported Providers -->
+<section class="py-20 bg-gray-100">
+    <div class="max-w-7xl mx-auto px-4">
+        <h2 class="text-3xl font-bold text-center mb-12">Supported Providers</h2>
+        <div class="grid grid-cols-2 md:grid-cols-5 gap-6">
+            <div class="bg-white p-6 rounded-xl shadow-sm text-center">
+                <div class="text-2xl font-bold text-gray-800">OpenAI</div>
+                <p class="text-sm text-gray-500">GPT-4, GPT-4o</p>
+            </div>
+            <div class="bg-white p-6 rounded-xl shadow-sm text-center">
+                <div class="text-2xl font-bold text-gray-800">Anthropic</div>
+                <p class="text-sm text-gray-500">Claude 3.5, 3</p>
+            </div>
+            <div class="bg-white p-6 rounded-xl shadow-sm text-center">
+                <div class="text-2xl font-bold text-gray-800">Google</div>
+                <p class="text-sm text-gray-500">Gemini Pro, Flash</p>
+            </div>
+            <div class="bg-white p-6 rounded-xl shadow-sm text-center">
+                <div class="text-2xl font-bold text-gray-800">Perplexity</div>
+                <p class="text-sm text-gray-500">Sonar Models</p>
+            </div>
+            <div class="bg-white p-6 rounded-xl shadow-sm text-center">
+                <div class="text-2xl font-bold text-gray-800">OpenRouter</div>
+                <p class="text-sm text-gray-500">300+ Models</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- CTA -->
+<section class="py-20 gradient-bg text-white">
+    <div class="max-w-3xl mx-auto px-4 text-center">
+        <h2 class="text-3xl font-bold mb-4">Start Tracking Your AI Usage Today</h2>
+        <p class="text-xl mb-8">Free tier includes 100k tokens/month. No credit card required.</p>
+        <a href="/register" class="bg-white text-primary px-8 py-3 rounded-lg font-semibold hover:bg-gray-100">Get Started Free</a>
+    </div>
+</section>
+{% endblock %}

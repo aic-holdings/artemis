@@ -1,0 +1,358 @@
+{% extends "base.html" %}
+
+{% block title %}Setup Guide - Artemis{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto px-4 py-8">
+    <h1 class="text-3xl font-bold mb-2">Setup Guide</h1>
+    <p class="text-gray-600 mb-8">Copy these instructions to share with your coding agent or team. Click any section to copy it to your clipboard.</p>
+
+    <!-- Quick Start -->
+    <div class="bg-white rounded-xl shadow-sm border mb-6 overflow-hidden">
+        <div class="flex items-center justify-between p-4 bg-gray-50 border-b cursor-pointer hover:bg-gray-100" onclick="copySection('quickstart')">
+            <h2 class="text-xl font-semibold">Quick Start Guide</h2>
+            <button class="text-primary text-sm hover:underline flex items-center gap-1">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+                </svg>
+                Copy
+            </button>
+        </div>
+        <pre id="quickstart" class="p-4 text-sm overflow-x-auto bg-gray-900 text-gray-100"><code># Artemis Setup Instructions
+
+Artemis is an AI proxy that tracks usage and costs across multiple LLM providers.
+
+## Base URL
+{{ base_url }}
+
+## Your Artemis API Key
+{% if artemis_key %}{{ artemis_key }}{% else %}(Generate one at {{ base_url }}/api-keys){% endif %}
+
+## How It Works
+1. Use your normal SDK (OpenAI, Anthropic, etc.)
+2. Change the `base_url` to point to Artemis
+3. Use your Artemis API key instead of the provider key
+4. All requests are proxied and tracked automatically
+
+## Supported Providers
+- OpenAI: {{ base_url }}/v1/openai
+- Anthropic: {{ base_url }}/v1/anthropic
+- Google: {{ base_url }}/v1/google
+- Perplexity: {{ base_url }}/v1/perplexity
+- OpenRouter: {{ base_url }}/v1/openrouter</code></pre>
+    </div>
+
+    <!-- OpenAI -->
+    <div class="bg-white rounded-xl shadow-sm border mb-6 overflow-hidden">
+        <div class="flex items-center justify-between p-4 bg-gray-50 border-b cursor-pointer hover:bg-gray-100" onclick="copySection('openai')">
+            <h2 class="text-xl font-semibold">OpenAI Setup</h2>
+            <button class="text-primary text-sm hover:underline flex items-center gap-1">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+                </svg>
+                Copy
+            </button>
+        </div>
+        <pre id="openai" class="p-4 text-sm overflow-x-auto bg-gray-900 text-gray-100"><code># OpenAI via Artemis
+
+## Python Setup
+```python
+from openai import OpenAI
+
+client = OpenAI(
+    base_url="{{ base_url }}/v1/openai",
+    api_key="{% if artemis_key %}{{ artemis_key }}{% else %}art_your_artemis_key{% endif %}"
+)
+
+response = client.chat.completions.create(
+    model="gpt-4o",
+    messages=[{"role": "user", "content": "Hello!"}]
+)
+print(response.choices[0].message.content)
+```
+
+## Environment Variables
+```bash
+OPENAI_BASE_URL={{ base_url }}/v1/openai
+OPENAI_API_KEY={% if artemis_key %}{{ artemis_key }}{% else %}art_your_artemis_key{% endif %}
+```
+
+## Supported Models
+- gpt-4o, gpt-4o-mini
+- gpt-4-turbo, gpt-4
+- gpt-3.5-turbo
+- o1-preview, o1-mini
+
+## Features
+All OpenAI features work through Artemis:
+- Chat completions
+- Streaming
+- Function calling / Tools
+- JSON mode
+- Vision (image inputs)</code></pre>
+    </div>
+
+    <!-- Anthropic -->
+    <div class="bg-white rounded-xl shadow-sm border mb-6 overflow-hidden">
+        <div class="flex items-center justify-between p-4 bg-gray-50 border-b cursor-pointer hover:bg-gray-100" onclick="copySection('anthropic')">
+            <h2 class="text-xl font-semibold">Anthropic Setup</h2>
+            <button class="text-primary text-sm hover:underline flex items-center gap-1">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+                </svg>
+                Copy
+            </button>
+        </div>
+        <pre id="anthropic" class="p-4 text-sm overflow-x-auto bg-gray-900 text-gray-100"><code># Anthropic via Artemis
+
+## Python Setup
+```python
+import anthropic
+
+client = anthropic.Anthropic(
+    base_url="{{ base_url }}/v1/anthropic",
+    api_key="{% if artemis_key %}{{ artemis_key }}{% else %}art_your_artemis_key{% endif %}"
+)
+
+response = client.messages.create(
+    model="claude-sonnet-4-20250514",
+    max_tokens=1024,
+    messages=[{"role": "user", "content": "Hello!"}]
+)
+print(response.content[0].text)
+```
+
+## Environment Variables
+```bash
+ANTHROPIC_BASE_URL={{ base_url }}/v1/anthropic
+ANTHROPIC_API_KEY={% if artemis_key %}{{ artemis_key }}{% else %}art_your_artemis_key{% endif %}
+```
+
+## Supported Models
+- claude-sonnet-4-20250514 (Claude 4 Sonnet)
+- claude-opus-4-20250514 (Claude 4 Opus)
+- claude-3-5-sonnet-20241022
+- claude-3-5-haiku-20241022
+- claude-3-opus-20240229
+
+## Features
+All Anthropic features work through Artemis:
+- Messages API
+- Streaming
+- Tool use
+- Vision (image inputs)
+- System prompts</code></pre>
+    </div>
+
+    <!-- Google -->
+    <div class="bg-white rounded-xl shadow-sm border mb-6 overflow-hidden">
+        <div class="flex items-center justify-between p-4 bg-gray-50 border-b cursor-pointer hover:bg-gray-100" onclick="copySection('google')">
+            <h2 class="text-xl font-semibold">Google Gemini Setup</h2>
+            <button class="text-primary text-sm hover:underline flex items-center gap-1">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+                </svg>
+                Copy
+            </button>
+        </div>
+        <pre id="google" class="p-4 text-sm overflow-x-auto bg-gray-900 text-gray-100"><code># Google Gemini via Artemis
+
+## Python Setup
+```python
+import google.generativeai as genai
+
+# Configure to use Artemis proxy
+genai.configure(
+    api_key="{% if artemis_key %}{{ artemis_key }}{% else %}art_your_artemis_key{% endif %}",
+    transport="rest",
+    client_options={"api_endpoint": "{{ base_url }}/v1/google"}
+)
+
+model = genai.GenerativeModel("gemini-1.5-pro")
+response = model.generate_content("Hello!")
+print(response.text)
+```
+
+## Supported Models
+- gemini-1.5-pro
+- gemini-1.5-flash
+- gemini-1.0-pro
+
+## Features
+All Gemini features work through Artemis:
+- Text generation
+- Streaming
+- Function calling
+- Vision (image inputs)
+- Multi-turn conversations</code></pre>
+    </div>
+
+    <!-- Perplexity -->
+    <div class="bg-white rounded-xl shadow-sm border mb-6 overflow-hidden">
+        <div class="flex items-center justify-between p-4 bg-gray-50 border-b cursor-pointer hover:bg-gray-100" onclick="copySection('perplexity')">
+            <h2 class="text-xl font-semibold">Perplexity Setup</h2>
+            <button class="text-primary text-sm hover:underline flex items-center gap-1">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+                </svg>
+                Copy
+            </button>
+        </div>
+        <pre id="perplexity" class="p-4 text-sm overflow-x-auto bg-gray-900 text-gray-100"><code># Perplexity via Artemis
+
+## Python Setup (OpenAI-compatible)
+```python
+from openai import OpenAI
+
+client = OpenAI(
+    base_url="{{ base_url }}/v1/perplexity",
+    api_key="{% if artemis_key %}{{ artemis_key }}{% else %}art_your_artemis_key{% endif %}"
+)
+
+response = client.chat.completions.create(
+    model="sonar-pro",
+    messages=[{"role": "user", "content": "What's the latest news on AI?"}]
+)
+print(response.choices[0].message.content)
+```
+
+## Supported Models
+- sonar-pro (with search)
+- sonar (with search)
+- sonar-reasoning-pro
+- sonar-reasoning
+
+## Features
+Perplexity's unique features work through Artemis:
+- Real-time web search
+- Citations in responses
+- Streaming</code></pre>
+    </div>
+
+    <!-- OpenRouter -->
+    <div class="bg-white rounded-xl shadow-sm border mb-6 overflow-hidden">
+        <div class="flex items-center justify-between p-4 bg-gray-50 border-b cursor-pointer hover:bg-gray-100" onclick="copySection('openrouter')">
+            <h2 class="text-xl font-semibold">OpenRouter Setup</h2>
+            <button class="text-primary text-sm hover:underline flex items-center gap-1">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+                </svg>
+                Copy
+            </button>
+        </div>
+        <pre id="openrouter" class="p-4 text-sm overflow-x-auto bg-gray-900 text-gray-100"><code># OpenRouter via Artemis
+
+## Python Setup (OpenAI-compatible)
+```python
+from openai import OpenAI
+
+client = OpenAI(
+    base_url="{{ base_url }}/v1/openrouter",
+    api_key="{% if artemis_key %}{{ artemis_key }}{% else %}art_your_artemis_key{% endif %}"
+)
+
+response = client.chat.completions.create(
+    model="anthropic/claude-3.5-sonnet",  # or any OpenRouter model
+    messages=[{"role": "user", "content": "Hello!"}]
+)
+print(response.choices[0].message.content)
+```
+
+## Environment Variables
+```bash
+OPENAI_BASE_URL={{ base_url }}/v1/openrouter
+OPENAI_API_KEY={% if artemis_key %}{{ artemis_key }}{% else %}art_your_artemis_key{% endif %}
+```
+
+## Popular Models
+- anthropic/claude-3.5-sonnet
+- openai/gpt-4o
+- google/gemini-pro-1.5
+- meta-llama/llama-3.1-405b-instruct
+- mistralai/mixtral-8x22b-instruct
+
+## Features
+Access 300+ models through a single API:
+- All major providers
+- Automatic fallbacks
+- Cost optimization</code></pre>
+    </div>
+
+    <!-- Tracking Metadata -->
+    <div class="bg-white rounded-xl shadow-sm border mb-6 overflow-hidden">
+        <div class="flex items-center justify-between p-4 bg-gray-50 border-b cursor-pointer hover:bg-gray-100" onclick="copySection('tracking')">
+            <h2 class="text-xl font-semibold">Usage Tracking & Metadata</h2>
+            <button class="text-primary text-sm hover:underline flex items-center gap-1">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+                </svg>
+                Copy
+            </button>
+        </div>
+        <pre id="tracking" class="p-4 text-sm overflow-x-auto bg-gray-900 text-gray-100"><code># Tracking Usage with Artemis
+
+Artemis automatically tracks all requests. You can add metadata for filtering.
+
+## Adding App ID and User ID
+
+### Via Request Body (recommended)
+```python
+response = client.chat.completions.create(
+    model="gpt-4o",
+    messages=[{"role": "user", "content": "Hello!"}],
+    # Add metadata for tracking
+    extra_body={
+        "metadata": {
+            "app_id": "my-chatbot",
+            "user_id": "user-123"
+        }
+    }
+)
+```
+
+### Via Headers
+```python
+response = client.chat.completions.create(
+    model="gpt-4o",
+    messages=[{"role": "user", "content": "Hello!"}],
+    extra_headers={
+        "X-App-ID": "my-chatbot",
+        "X-User-ID": "user-123"
+    }
+)
+```
+
+## Viewing Usage
+- Dashboard: {{ base_url }}/dashboard
+- Logs: {{ base_url }}/logs
+
+## Filtering
+Filter usage by:
+- Provider (OpenAI, Anthropic, etc.)
+- App ID (your application identifier)
+- Model (gpt-4o, claude-3.5-sonnet, etc.)
+- Time period (7, 14, 30 days)</code></pre>
+    </div>
+
+</div>
+
+<script>
+function copySection(id) {
+    const element = document.getElementById(id);
+    const text = element.textContent;
+
+    navigator.clipboard.writeText(text).then(() => {
+        // Show feedback
+        const btn = element.previousElementSibling.querySelector('button');
+        const originalText = btn.innerHTML;
+        btn.innerHTML = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> Copied!';
+        btn.classList.add('text-green-600');
+
+        setTimeout(() => {
+            btn.innerHTML = originalText;
+            btn.classList.remove('text-green-600');
+        }, 2000);
+    });
+}
+</script>
+{% endblock %}

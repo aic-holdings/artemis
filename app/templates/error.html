@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+
+{% block title %}Oops - Artemis{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto px-4 py-8">
+    <!-- Crash Bandicoot Style Header -->
+    <div class="text-center mb-8">
+        <!-- Pixel Art Crash Bandicoot -->
+        <div class="inline-block mb-4">
+            <a href="https://crashbandicoot.fandom.com/wiki/Crash_Bandicoot_(character)" target="_blank" rel="noopener noreferrer" title="Learn more about Crash Bandicoot">
+                <img src="/static/images/crash-bandicoot.png" alt="Crash Bandicoot" class="h-32 mx-auto hover:scale-110 transition-transform duration-200" style="image-rendering: pixelated;">
+            </a>
+        </div>
+        <h1 class="text-3xl font-bold text-gray-800 mb-2" id="error-title"></h1>
+        <p class="text-gray-500 italic" id="error-subtitle"></p>
+    </div>
+
+    <!-- Error Summary Box -->
+    <div class="bg-red-50 border border-red-200 rounded-xl p-6 mb-6">
+        <div class="flex items-start space-x-4">
+            <div class="flex-shrink-0">
+                <div class="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
+                    <span class="text-2xl font-mono font-bold text-red-600">{{ status_code }}</span>
+                </div>
+            </div>
+            <div class="flex-1">
+                <h2 class="text-xl font-bold text-red-800 mb-1">{{ error_type }}</h2>
+                <p class="text-red-600 font-mono text-sm bg-red-100 px-3 py-2 rounded mt-2">{{ error_message }}</p>
+            </div>
+        </div>
+    </div>
+
+    {% if is_dev_mode %}
+    <!-- Claude Code Prompt - Above Stack Trace -->
+    <div class="bg-indigo-50 border-2 border-indigo-300 rounded-xl overflow-hidden mb-6 shadow-lg">
+        <div class="bg-indigo-100 px-4 py-3 border-b border-indigo-200 flex items-center justify-between">
+            <div class="flex items-center space-x-2">
+                <svg class="h-5 w-5 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+                </svg>
+                <span class="font-semibold text-indigo-800">Claude Code Prompt</span>
+            </div>
+            <button onclick="copyPrompt()" class="bg-indigo-600 text-white px-3 py-1 rounded text-sm hover:bg-indigo-700 transition-colors">
+                Copy to Clipboard
+            </button>
+        </div>
+        <div class="p-4">
+            <p class="text-sm text-indigo-700 mb-3">Copy this prompt and paste it into Claude Code to debug:</p>
+            <div id="claude-prompt" class="bg-white border border-indigo-200 rounded-lg p-4 font-mono text-sm text-gray-800 whitespace-pre-wrap">I'm getting an error in my Artemis app. Please help me fix it.
+
+**Error Details:**
+- Type: {{ error_type }}
+- Message: {{ error_message }}
+- Status: {{ status_code }}
+- URL: {{ request_method }} {{ request_url }}
+- Time: {{ timestamp }}
+
+**Request Context:**
+- User-Agent: {{ user_agent }}
+- Content-Type: {{ content_type }}
+- Referer: {{ referer }}
+
+**Stack Trace:**
+```
+{{ traceback }}
+```
+
+Please:
+1. Read the relevant file(s) mentioned in the stack trace
+2. Identify the root cause of the error
+3. Fix the issue</div>
+        </div>
+    </div>
+
+    <!-- Developer Mode: Full Error Details -->
+    <div class="bg-white border rounded-xl shadow-sm overflow-hidden mb-6">
+        <div class="bg-gray-800 text-white px-4 py-3 flex items-center justify-between">
+            <span class="font-mono text-sm">Stack Trace</span>
+            <span class="text-xs bg-yellow-500 text-black px-2 py-1 rounded">DEV MODE</span>
+        </div>
+        <div class="p-4 bg-gray-900 overflow-x-auto">
+            <pre class="text-green-400 text-sm font-mono whitespace-pre-wrap">{{ traceback }}</pre>
+        </div>
+    </div>
+
+    <!-- Request Details -->
+    <div class="bg-white border rounded-xl shadow-sm overflow-hidden mb-6">
+        <div class="bg-gray-100 px-4 py-3 border-b">
+            <span class="font-semibold text-gray-700">Request Details</span>
+        </div>
+        <div class="p-4 space-y-2 text-sm">
+            <div><span class="font-medium text-gray-600">Method:</span> <code class="bg-gray-100 px-2 py-1 rounded">{{ request_method }}</code></div>
+            <div><span class="font-medium text-gray-600">URL:</span> <code class="bg-gray-100 px-2 py-1 rounded">{{ request_url }}</code></div>
+            <div><span class="font-medium text-gray-600">Time:</span> <code class="bg-gray-100 px-2 py-1 rounded">{{ timestamp }}</code></div>
+            <div><span class="font-medium text-gray-600">User-Agent:</span> <code class="bg-gray-100 px-2 py-1 rounded text-xs break-all">{{ user_agent }}</code></div>
+            <div><span class="font-medium text-gray-600">Content-Type:</span> <code class="bg-gray-100 px-2 py-1 rounded">{{ content_type }}</code></div>
+            <div><span class="font-medium text-gray-600">Referer:</span> <code class="bg-gray-100 px-2 py-1 rounded">{{ referer }}</code></div>
+        </div>
+    </div>
+    {% else %}
+    <!-- Production Mode: Generic Error -->
+    <div class="text-center py-8">
+        <p class="text-gray-600 mb-4">Something went wrong. Please try again later.</p>
+        <a href="/" class="inline-block bg-primary text-white px-6 py-2 rounded-lg hover:bg-indigo-700 transition-colors">
+            Return Home
+        </a>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+// Crash Bandicoot themed error messages
+const errorData = [
+    { title: "WOAH!", subtitle: "Crash ran into a crate he couldn't break." },
+    { title: "Game Over", subtitle: "No more Aku Aku masks left." },
+    { title: "Wumpa'd Out", subtitle: "Collected too many errors, not enough fruit." },
+    { title: "Spun Out", subtitle: "The tornado spin didn't clear this one." },
+    { title: "Crate Expectations", subtitle: "Expected TNT, got an exception." },
+    { title: "N. Sane Error", subtitle: "Even Dr. Neo Cortex couldn't debug this." },
+    { title: "Bonus Round Failed", subtitle: "You missed a box somewhere in the code." },
+    { title: "Nitro Triggered", subtitle: "Stepped on something explosive in production." },
+    { title: "Time Trial Timeout", subtitle: "The request took too long to finish." },
+    { title: "Warp Room Malfunction", subtitle: "Can't teleport to the requested page." },
+    { title: "Aku Aku Says No", subtitle: "OOGA BOOGA! ...but make it an error." },
+    { title: "100% Completion Failed", subtitle: "There's a hidden bug in this level." },
+    { title: "Checkpoint Not Saved", subtitle: "Your progress was lost in the crash." },
+    { title: "Crystal Not Found", subtitle: "The resource you seek doesn't exist." },
+    { title: "Cortex Wins This Round", subtitle: "The server has been defeated... for now." },
+];
+
+// Pick a random error message
+const error = errorData[Math.floor(Math.random() * errorData.length)];
+document.getElementById('error-title').textContent = error.title;
+document.getElementById('error-subtitle').textContent = error.subtitle;
+
+function copyPrompt() {
+    const promptText = document.getElementById('claude-prompt').innerText;
+    navigator.clipboard.writeText(promptText).then(() => {
+        const btn = event.target;
+        const originalText = btn.innerText;
+        btn.innerText = 'Copied!';
+        btn.classList.remove('bg-indigo-600', 'hover:bg-indigo-700');
+        btn.classList.add('bg-green-600');
+        setTimeout(() => {
+            btn.innerText = originalText;
+            btn.classList.remove('bg-green-600');
+            btn.classList.add('bg-indigo-600', 'hover:bg-indigo-700');
+        }, 2000);
+    });
+}
+</script>
+{% endblock %}

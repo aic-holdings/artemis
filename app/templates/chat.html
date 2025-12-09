@@ -1,0 +1,569 @@
+{% extends "base.html" %}
+
+{% block title %}Chat - Artemis{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto px-4 py-8" x-data="chatApp()">
+    <!-- Header with controls -->
+    <div class="bg-white rounded-xl shadow-sm border p-6 mb-6">
+        <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center gap-4">
+                <h1 class="text-2xl font-bold text-gray-900">Artemis Chat</h1>
+                <!-- Mode Toggle -->
+                <div class="flex bg-gray-100 rounded-lg p-1">
+                    <button @click="visionMode = false"
+                            :class="!visionMode ? 'bg-white shadow-sm' : 'text-gray-500 hover:text-gray-700'"
+                            class="px-3 py-1 text-sm font-medium rounded-md transition-all">
+                        Text
+                    </button>
+                    <button @click="visionMode = true"
+                            :class="visionMode ? 'bg-white shadow-sm' : 'text-gray-500 hover:text-gray-700'"
+                            class="px-3 py-1 text-sm font-medium rounded-md transition-all flex items-center gap-1">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                        </svg>
+                        Vision
+                    </button>
+                </div>
+            </div>
+            {% if not available_providers %}
+            <div class="bg-yellow-50 border border-yellow-200 text-yellow-800 px-4 py-2 rounded-lg text-sm">
+                No provider keys configured. <a href="/providers" class="underline font-medium">Add provider keys</a>
+            </div>
+            {% elif not available_models %}
+            <div class="bg-yellow-50 border border-yellow-200 text-yellow-800 px-4 py-2 rounded-lg text-sm">
+                No models enabled. <a href="/providers" class="underline font-medium">Enable models</a> in provider settings.
+            </div>
+            {% elif not api_keys %}
+            <div class="bg-yellow-50 border border-yellow-200 text-yellow-800 px-4 py-2 rounded-lg text-sm">
+                No API key available. <a href="/api-keys" class="underline font-medium">Create an API key</a> or select a group.
+            </div>
+            {% endif %}
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <!-- Provider/Model Selector -->
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">
+                    Model
+                    <span x-show="visionMode" class="text-xs text-indigo-600 ml-1">(Vision only)</span>
+                </label>
+                <select x-model="model" @change="onModelChange()"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary focus:border-transparent"
+                        :disabled="!hasModels">
+                    <template x-if="!visionMode">
+                        {% if available_models %}
+                            {% for provider, data in available_models.items() %}
+                            <optgroup label="{{ data.name }}">
+                                {% for model_id, model_name in data.models %}
+                                <option value="{{ model_id }}">{{ model_id }}</option>
+                                {% endfor %}
+                            </optgroup>
+                            {% endfor %}
+                        {% else %}
+                            <option value="" disabled>No models available</option>
+                        {% endif %}
+                    </template>
+                    <template x-if="visionMode">
+                        <template x-for="[modelId, meta] in Object.entries(modelMetadata).filter(([k,v]) => v.supports_vision)" :key="modelId">
+                            <option :value="modelId" x-text="modelId"></option>
+                        </template>
+                    </template>
+                </select>
+                <p x-show="visionMode && visionModelCount === 0" class="text-xs text-red-600 mt-1">
+                    No vision-capable models enabled
+                </p>
+            </div>
+
+            <!-- App ID Selector -->
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">App ID</label>
+                <select x-model="appId" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary focus:border-transparent">
+                    <option value="artemis-chat">artemis-chat</option>
+                    <option value="artemis-vision">artemis-vision</option>
+                    <option value="ai-assistant">ai-assistant</option>
+                    <option value="code-helper">code-helper</option>
+                    <option value="research-bot">research-bot</option>
+                    <option value="customer-support">customer-support</option>
+                    <option value="content-writer">content-writer</option>
+                    <option value="data-analyzer">data-analyzer</option>
+                    <option value="test-app">test-app</option>
+                </select>
+            </div>
+
+            <!-- Clear Chat -->
+            <div class="flex items-end">
+                <button @click="clearChat()" class="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg transition-colors">
+                    Clear Chat
+                </button>
+            </div>
+        </div>
+
+        <!-- API Key Selector -->
+        {% if api_keys %}
+        <div class="mt-4 flex items-center gap-3">
+            <label class="text-sm font-medium text-gray-700">API Key:</label>
+            <select id="api-key-select" onchange="changeApiKey(this.value)"
+                    class="flex-1 max-w-md border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-primary focus:border-transparent">
+                {% for group_name, group_keys in keys_by_group.items() %}
+                <optgroup label="{{ group_name }}">
+                    {% for key in group_keys %}
+                    <option value="{{ key.id }}" {% if selected_key and selected_key.id == key.id %}selected{% endif %}>
+                        {{ key.name }} ({{ key.key_prefix }}...)
+                        {% if key.is_system %} [System]{% endif %}
+                    </option>
+                    {% endfor %}
+                </optgroup>
+                {% endfor %}
+            </select>
+            {% if selected_key and selected_key.is_system %}
+            <span class="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded">System Key</span>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Vision Mode: Image Upload Area -->
+    <template x-if="visionMode">
+        <div class="bg-white rounded-xl shadow-sm border p-6 mb-6">
+            <h3 class="text-sm font-medium text-gray-700 mb-3">Image Input</h3>
+
+            <!-- Dropzone -->
+            <div @drop.prevent="handleDrop($event)"
+                 @dragover.prevent="dragover = true"
+                 @dragleave="dragover = false"
+                 :class="dragover ? 'border-indigo-500 bg-indigo-50' : 'border-gray-300 bg-gray-50'"
+                 class="border-2 border-dashed rounded-lg p-8 text-center transition-colors cursor-pointer"
+                 @click="$refs.fileInput.click()">
+                <input type="file" x-ref="fileInput" @change="handleFileSelect($event)" accept="image/*" class="hidden">
+                <svg class="w-12 h-12 mx-auto text-gray-400 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                </svg>
+                <p class="text-gray-600 mb-1">Drop an image here or click to upload</p>
+                <p class="text-sm text-gray-400">PNG, JPG, GIF, WebP up to 20MB</p>
+            </div>
+
+            <!-- OR divider -->
+            <div class="flex items-center my-4">
+                <div class="flex-1 border-t border-gray-200"></div>
+                <span class="px-4 text-sm text-gray-400">OR</span>
+                <div class="flex-1 border-t border-gray-200"></div>
+            </div>
+
+            <!-- Image URL input -->
+            <div class="flex gap-2">
+                <input type="url" x-model="imageUrl"
+                       placeholder="Paste image URL (https://...)"
+                       class="flex-1 border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary focus:border-transparent">
+                <button @click="loadImageFromUrl()"
+                        :disabled="!imageUrl.trim()"
+                        class="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg disabled:opacity-50 transition-colors">
+                    Load
+                </button>
+            </div>
+
+            <!-- Image preview -->
+            <template x-if="currentImage">
+                <div class="mt-4 relative inline-block">
+                    <img :src="currentImage.preview" class="max-h-48 rounded-lg border border-gray-200">
+                    <button @click="removeImage()"
+                            class="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center hover:bg-red-600">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </button>
+                    <p class="text-xs text-gray-500 mt-1" x-text="currentImage.type === 'url' ? 'URL: ' + currentImage.url : 'File: ' + currentImage.name"></p>
+                </div>
+            </template>
+        </div>
+    </template>
+
+    <!-- Chat Messages -->
+    <div class="bg-white rounded-xl shadow-sm border mb-6 overflow-hidden">
+        <div id="chat-messages" class="h-[500px] overflow-y-auto p-6 space-y-4">
+            <template x-for="(msg, index) in messages" :key="index">
+                <div :class="msg.role === 'user' ? 'flex justify-end' : 'flex justify-start'">
+                    <div :class="msg.role === 'user' ? 'bg-primary text-white rounded-2xl rounded-br-md' : 'bg-gray-100 text-gray-900 rounded-2xl rounded-bl-md'"
+                         class="max-w-[80%] px-4 py-3">
+                        <div class="text-sm font-medium mb-1" x-text="msg.role === 'user' ? 'You' : msg.model || 'Assistant'"></div>
+                        <!-- Show image if present -->
+                        <template x-if="msg.image">
+                            <img :src="msg.image" class="max-h-32 rounded mb-2">
+                        </template>
+                        <div class="whitespace-pre-wrap" x-text="msg.content"></div>
+                        <template x-if="msg.usage">
+                            <div class="mt-2 text-xs opacity-70">
+                                <span x-text="msg.usage.input_tokens"></span> in /
+                                <span x-text="msg.usage.output_tokens"></span> out
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </template>
+
+            <!-- Loading indicator -->
+            <template x-if="loading">
+                <div class="flex justify-start">
+                    <div class="bg-gray-100 text-gray-900 rounded-2xl rounded-bl-md px-4 py-3">
+                        <div class="flex items-center space-x-2">
+                            <div class="animate-pulse flex space-x-1">
+                                <div class="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style="animation-delay: 0ms"></div>
+                                <div class="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style="animation-delay: 150ms"></div>
+                                <div class="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style="animation-delay: 300ms"></div>
+                            </div>
+                            <span class="text-sm text-gray-500">Thinking...</span>
+                        </div>
+                    </div>
+                </div>
+            </template>
+
+            <!-- Empty state -->
+            <template x-if="messages.length === 0 && !loading">
+                <div class="flex flex-col items-center justify-center h-full text-gray-400">
+                    <template x-if="visionMode">
+                        <svg class="w-16 h-16 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                        </svg>
+                    </template>
+                    <template x-if="!visionMode">
+                        <svg class="w-16 h-16 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                                  d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path>
+                        </svg>
+                    </template>
+                    {% if not available_providers %}
+                    <p>No provider keys configured</p>
+                    <p class="text-sm mt-1"><a href="/providers" class="text-primary underline">Add provider keys</a> to start chatting</p>
+                    {% elif not available_models %}
+                    <p>No models enabled</p>
+                    <p class="text-sm mt-1"><a href="/providers" class="text-primary underline">Enable models</a> in provider settings</p>
+                    {% elif not api_keys %}
+                    <p>No API key available</p>
+                    <p class="text-sm mt-1"><a href="/api-keys" class="text-primary underline">Create an API key</a> or select a group</p>
+                    {% else %}
+                    <template x-if="visionMode">
+                        <div class="text-center">
+                            <p>Vision Mode</p>
+                            <p class="text-sm mt-1">Upload an image or paste a URL, then ask a question</p>
+                        </div>
+                    </template>
+                    <template x-if="!visionMode">
+                        <div class="text-center">
+                            <p>Start a conversation</p>
+                            <p class="text-sm mt-1">Messages are sent through Artemis proxy</p>
+                        </div>
+                    </template>
+                    {% endif %}
+                </div>
+            </template>
+        </div>
+    </div>
+
+    <!-- Input Area -->
+    <div class="bg-white rounded-xl shadow-sm border p-4">
+        <form @submit.prevent="sendMessage()">
+            <div class="flex space-x-4">
+                <textarea x-model="input"
+                          @keydown.enter.prevent="if (!$event.shiftKey) sendMessage()"
+                          :placeholder="visionMode ? 'Ask about the image... (Enter to send)' : 'Type your message... (Enter to send, Shift+Enter for new line)'"
+                          rows="2"
+                          class="flex-1 border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-primary focus:border-transparent resize-none"
+                          :disabled="loading || !canChat"></textarea>
+                <button type="submit"
+                        :disabled="loading || !input.trim() || !canChat || (visionMode && !currentImage)"
+                        class="bg-primary hover:bg-indigo-700 text-white px-6 py-3 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                    <span x-show="!loading">Send</span>
+                    <span x-show="loading">...</span>
+                </button>
+            </div>
+            <p x-show="visionMode && !currentImage" class="text-xs text-amber-600 mt-2">
+                Upload or paste an image URL above to send a vision message
+            </p>
+        </form>
+
+        <!-- Error display -->
+        <template x-if="error">
+            <div class="mt-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+                <div class="font-medium">Error</div>
+                <div class="text-sm" x-text="error"></div>
+            </div>
+        </template>
+    </div>
+</div>
+
+<script>
+// Function to change API key by reloading the page with the new key_id
+function changeApiKey(keyId) {
+    const url = new URL(window.location.href);
+    url.searchParams.set('key_id', keyId);
+    window.location.href = url.toString();
+}
+
+function chatApp() {
+    // Build provider mapping from available models
+    const providerMap = {
+        {% for provider, data in available_models.items() %}
+        {% for model_id, model_name in data.models %}
+        '{{ model_id }}': '{{ provider }}',
+        {% endfor %}
+        {% endfor %}
+    };
+
+    // Model metadata with vision capability
+    const modelMetadata = {{ model_metadata | default({}) | tojson | safe }};
+
+    // Get first available model as default
+    const firstModel = '{{ first_model or "" }}';
+
+    // Get first vision model
+    const firstVisionModel = Object.entries(modelMetadata).find(([k, v]) => v.supports_vision)?.[0] || '';
+
+    return {
+        messages: [],
+        input: '',
+        loading: false,
+        error: null,
+        model: firstModel,
+        appId: 'artemis-chat',
+        hasApiKey: {{ 'true' if selected_key else 'false' }},
+        hasModels: {{ 'true' if available_models else 'false' }},
+        apiKey: '{{ api_key_value or "" }}',
+        providerMap: providerMap,
+        modelMetadata: modelMetadata,
+
+        // Vision mode state
+        visionMode: false,
+        currentImage: null,
+        imageUrl: '',
+        dragover: false,
+
+        get canChat() {
+            return this.hasApiKey && this.hasModels;
+        },
+
+        get visionModelCount() {
+            return Object.values(this.modelMetadata).filter(m => m.supports_vision).length;
+        },
+
+        onModelChange() {
+            // Model changed - nothing special needed
+        },
+
+        // Watch visionMode changes
+        init() {
+            this.$watch('visionMode', (value) => {
+                if (value) {
+                    // Switching to vision mode - select first vision model and app ID
+                    if (firstVisionModel) {
+                        this.model = firstVisionModel;
+                    }
+                    this.appId = 'artemis-vision';
+                } else {
+                    // Switching to text mode - select first model and app ID
+                    this.model = firstModel;
+                    this.appId = 'artemis-chat';
+                    this.removeImage();
+                }
+            });
+        },
+
+        handleDrop(event) {
+            this.dragover = false;
+            const files = event.dataTransfer.files;
+            if (files.length > 0 && files[0].type.startsWith('image/')) {
+                this.loadImageFile(files[0]);
+            }
+        },
+
+        handleFileSelect(event) {
+            const files = event.target.files;
+            if (files.length > 0) {
+                this.loadImageFile(files[0]);
+            }
+        },
+
+        loadImageFile(file) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                this.currentImage = {
+                    type: 'base64',
+                    preview: e.target.result,
+                    data: e.target.result,
+                    name: file.name,
+                    mimeType: file.type
+                };
+            };
+            reader.readAsDataURL(file);
+        },
+
+        loadImageFromUrl() {
+            if (!this.imageUrl.trim()) return;
+            this.currentImage = {
+                type: 'url',
+                preview: this.imageUrl,
+                url: this.imageUrl
+            };
+            this.imageUrl = '';
+        },
+
+        removeImage() {
+            this.currentImage = null;
+        },
+
+        async sendMessage() {
+            if (!this.input.trim() || this.loading || !this.canChat) return;
+            if (this.visionMode && !this.currentImage) return;
+
+            const userMessage = this.input.trim();
+            this.input = '';
+            this.error = null;
+
+            // Build user message with optional image
+            const userMsgDisplay = {
+                role: 'user',
+                content: userMessage,
+                image: this.currentImage?.preview
+            };
+            this.messages.push(userMsgDisplay);
+
+            // Scroll to bottom
+            this.$nextTick(() => this.scrollToBottom());
+
+            this.loading = true;
+
+            try {
+                // Get provider from model mapping
+                const provider = this.providerMap[this.model] || this.getProvider(this.model);
+
+                // Build messages array for API
+                let apiMessages;
+
+                if (this.visionMode && this.currentImage) {
+                    // Vision message format
+                    const imageContent = this.currentImage.type === 'url'
+                        ? { type: 'image_url', image_url: { url: this.currentImage.url } }
+                        : { type: 'image_url', image_url: { url: this.currentImage.data } };
+
+                    apiMessages = [{
+                        role: 'user',
+                        content: [
+                            imageContent,
+                            { type: 'text', text: userMessage }
+                        ]
+                    }];
+
+                    // Clear image after sending
+                    this.removeImage();
+                } else {
+                    // Regular text messages
+                    apiMessages = this.messages.map(m => ({
+                        role: m.role,
+                        content: m.content
+                    }));
+                }
+
+                // Make request through Artemis proxy
+                const response = await fetch(`/v1/${provider}/chat/completions`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${this.apiKey}`,
+                        'X-App-Id': this.appId
+                    },
+                    body: JSON.stringify({
+                        model: this.model,
+                        messages: apiMessages,
+                        max_tokens: 4096
+                    })
+                });
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    let errorMsg = `HTTP ${response.status}`;
+                    try {
+                        const errorData = JSON.parse(errorText);
+                        errorMsg = errorData.error?.message || errorData.detail || errorMsg;
+                    } catch {
+                        // Response is not JSON, include raw text preview
+                        errorMsg = `HTTP ${response.status}: ${errorText.substring(0, 100)}`;
+                    }
+                    throw new Error(errorMsg);
+                }
+
+                const responseText = await response.text();
+                let data;
+                try {
+                    data = JSON.parse(responseText);
+                } catch {
+                    throw new Error(`Invalid JSON response: ${responseText.substring(0, 100)}`);
+                }
+
+                // Add assistant message
+                const assistantContent = data.choices?.[0]?.message?.content || 'No response';
+                this.messages.push({
+                    role: 'assistant',
+                    content: assistantContent,
+                    model: this.model,
+                    usage: data.usage ? {
+                        input_tokens: data.usage.prompt_tokens,
+                        output_tokens: data.usage.completion_tokens
+                    } : null
+                });
+
+            } catch (err) {
+                this.error = err.message;
+                // Remove the user message if there was an error
+                this.messages.pop();
+
+                // Log the AI response error to structured logs (localhost only)
+                if (window.artemisLog) {
+                    window.artemisLog.error(
+                        `AI Response Error: ${err.message}`,
+                        'ChatApp',
+                        {
+                            model: this.model,
+                            provider: this.providerMap[this.model] || this.getProvider(this.model),
+                            appId: this.appId,
+                            visionMode: this.visionMode,
+                            userMessage: userMessage.substring(0, 200), // First 200 chars for context
+                        }
+                    );
+                }
+            } finally {
+                this.loading = false;
+                this.$nextTick(() => this.scrollToBottom());
+            }
+        },
+
+        // Fallback provider detection (in case model not in map)
+        getProvider(model) {
+            if (model.startsWith('gpt-') || model.startsWith('o1') || model.startsWith('o3')) {
+                return 'openai';
+            } else if (model.startsWith('claude')) {
+                return 'anthropic';
+            } else if (model.startsWith('gemini')) {
+                return 'google';
+            } else if (model.includes('sonar') || model.includes('llama')) {
+                return 'perplexity';
+            } else if (model.includes('/')) {
+                return 'openrouter';
+            }
+            return 'openai'; // fallback
+        },
+
+        clearChat() {
+            this.messages = [];
+            this.error = null;
+            this.removeImage();
+        },
+
+        scrollToBottom() {
+            const container = document.getElementById('chat-messages');
+            if (container) {
+                container.scrollTop = container.scrollHeight;
+            }
+        }
+    };
+}
+</script>
+{% endblock %}

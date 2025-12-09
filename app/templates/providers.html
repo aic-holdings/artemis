@@ -1,0 +1,642 @@
+{% extends "base.html" %}
+
+{% block title %}Provider Keys - Artemis{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto px-4 py-8">
+    <h1 class="text-3xl font-bold mb-2">Provider API Keys</h1>
+    <p class="text-gray-600 mb-8">Add your API keys from each provider. You can add multiple accounts and keys per provider.</p>
+
+    {% if request.query_params.get('error') == 'duplicate_key_name' %}
+    <div class="bg-red-50 border border-red-200 p-4 rounded-xl mb-6">
+        <p class="text-red-800">A key with that name already exists for this account.</p>
+    </div>
+    {% elif request.query_params.get('error') == 'duplicate_account_name' %}
+    <div class="bg-red-50 border border-red-200 p-4 rounded-xl mb-6">
+        <p class="text-red-800">An account with that name already exists for this provider.</p>
+    </div>
+    {% elif request.query_params.get('error') == 'no_group' %}
+    <div class="bg-red-50 border border-red-200 p-4 rounded-xl mb-6">
+        <p class="text-red-800">Please select an organization and group first.</p>
+    </div>
+    {% endif %}
+
+    {% if not active_org %}
+    <div class="bg-yellow-50 border border-yellow-200 p-4 rounded-xl mb-6">
+        <p class="text-yellow-800">Select an organization to manage provider keys.</p>
+    </div>
+    {% elif all_groups_mode %}
+    <div class="bg-blue-50 border border-blue-200 p-4 rounded-xl mb-6">
+        <div class="flex items-center space-x-3">
+            <svg class="w-6 h-6 text-blue-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
+            <div>
+                <p class="text-blue-800">Viewing provider keys from all groups.</p>
+                <p class="text-sm text-blue-600">Select a specific group from the menu to add new keys.</p>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="space-y-6">
+        {% for provider in providers %}
+        <div class="bg-white p-6 rounded-xl shadow-sm border">
+            <div class="flex items-center justify-between mb-4">
+                <div class="flex items-center space-x-3">
+                    <div class="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center">
+                        {% if provider.id == 'openai' %}
+                        <span class="text-lg font-bold">O</span>
+                        {% elif provider.id == 'anthropic' %}
+                        <span class="text-lg font-bold">A</span>
+                        {% elif provider.id == 'google' %}
+                        <span class="text-lg font-bold">G</span>
+                        {% elif provider.id == 'perplexity' %}
+                        <span class="text-lg font-bold">P</span>
+                        {% elif provider.id == 'openrouter' %}
+                        <span class="text-lg font-bold">R</span>
+                        {% else %}
+                        <span class="text-lg font-bold">{{ provider.name[0] }}</span>
+                        {% endif %}
+                    </div>
+                    <div>
+                        <h3 class="font-semibold">{{ provider.name }}</h3>
+                        <p class="text-sm text-gray-500">
+                            {% if provider.id == 'openai' %}
+                            GPT-4, GPT-4o, o1
+                            {% elif provider.id == 'anthropic' %}
+                            Claude Sonnet 4, Claude Opus 4
+                            {% elif provider.id == 'google' %}
+                            Gemini Pro, Gemini Flash
+                            {% elif provider.id == 'perplexity' %}
+                            Sonar models with search
+                            {% elif provider.id == 'openrouter' %}
+                            300+ models from various providers
+                            {% endif %}
+                        </p>
+                    </div>
+                </div>
+                <div class="flex items-center space-x-2">
+                    {% if provider.id in provider_data %}
+                    {% set total_keys = namespace(count=0) %}
+                    {% for acc_data in provider_data[provider.id].accounts %}
+                    {% set total_keys.count = total_keys.count + acc_data['keys']|length %}
+                    {% endfor %}
+                    <span class="text-xs bg-green-100 text-green-600 px-2 py-1 rounded">{{ total_keys.count }} key(s)</span>
+                    {% endif %}
+                    {% if model_counts.get(provider.id) %}
+                    <span class="text-xs bg-blue-100 text-blue-600 px-2 py-1 rounded">{{ model_counts[provider.id].enabled }}/{{ model_counts[provider.id].total }} models</span>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Existing Accounts and Keys for this provider -->
+            {% if provider.id in provider_data %}
+            <div class="space-y-4 mb-4">
+                {% for acc_data in provider_data[provider.id].accounts %}
+                <div class="border rounded-lg overflow-hidden">
+                    <!-- Account Header -->
+                    <div class="bg-gray-50 px-4 py-3 border-b flex items-center justify-between">
+                        <div>
+                            <span class="font-medium text-sm">{{ acc_data.account.name }}</span>
+                            {% if acc_data.group_name %}
+                            <span class="text-xs bg-secondary/10 text-secondary px-2 py-0.5 rounded ml-2">{{ acc_data.group_name }}</span>
+                            {% endif %}
+                            {% if acc_data.account.account_email %}
+                            <span class="text-xs text-gray-500 ml-2">{{ acc_data.account.account_email }}</span>
+                            {% endif %}
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <span class="text-xs text-gray-400">{{ acc_data['keys']|length }} key(s)</span>
+                            {% if acc_data['keys']|length == 0 %}
+                            <form action="/providers/accounts/{{ acc_data.account.id }}/delete" method="POST" class="inline"
+                                onsubmit="return confirm('Delete this account?')">
+                                <button type="submit" class="text-red-600 text-xs hover:underline">Delete Account</button>
+                            </form>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <!-- Keys in this Account -->
+                    {% if acc_data['keys'] %}
+                    <div class="divide-y">
+                        {% for key in acc_data['keys'] %}
+                        <div class="px-4 py-3 {% if key.is_default %}bg-indigo-50{% endif %}">
+                            <div class="flex items-start justify-between">
+                                <div class="flex-1 min-w-0">
+                                    <div class="flex items-center space-x-2">
+                                        <span class="font-medium text-sm">{{ key.name }}</span>
+                                        {% if key.is_default %}
+                                        <span class="text-xs bg-primary text-white px-2 py-0.5 rounded">Default</span>
+                                        {% endif %}
+                                        {% if key.key_suffix %}
+                                        <span class="text-xs text-gray-400 font-mono">...{{ key.key_suffix }}</span>
+                                        {% endif %}
+                                    </div>
+                                    <div class="flex items-center space-x-2 mt-2">
+                                        <code id="key-hidden-{{ key.id }}" class="text-xs text-gray-500">API key configured</code>
+                                        <code id="key-revealed-{{ key.id }}" class="text-xs font-mono text-gray-800 hidden break-all"></code>
+                                        <button id="reveal-btn-{{ key.id }}" onclick="revealKey('{{ key.id }}')"
+                                            class="text-primary text-xs hover:underline">Reveal</button>
+                                    </div>
+                                </div>
+                                <div class="space-x-2 flex-shrink-0 ml-4 flex items-center">
+                                    {% if not key.is_default %}
+                                    <form action="/providers/key/{{ key.id }}/set-default" method="POST" class="inline">
+                                        <button type="submit" class="text-primary text-xs hover:underline">Set Default</button>
+                                    </form>
+                                    {% endif %}
+                                    <form action="/providers/key/{{ key.id }}/delete" method="POST" class="inline"
+                                        onsubmit="return confirm('Remove this API key?')">
+                                        <button type="submit" class="text-red-600 text-xs hover:underline">Remove</button>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+
+                    <!-- Add Key to Account -->
+                    <div class="px-4 py-3 bg-gray-50 border-t">
+                        <button onclick="document.getElementById('add-key-form-{{ acc_data.account.id }}').classList.toggle('hidden')"
+                            class="text-primary text-xs hover:underline flex items-center space-x-1">
+                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                            </svg>
+                            <span>Add key to this account</span>
+                        </button>
+                        <form id="add-key-form-{{ acc_data.account.id }}" action="/providers/accounts/{{ acc_data.account.id }}/keys" method="POST" class="mt-3 hidden">
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-700 mb-1">Key Name *</label>
+                                    <input type="text" name="name" placeholder="e.g., Production, Development" required
+                                        class="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-primary focus:border-transparent">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-700 mb-1">API Key *</label>
+                                    <input type="password" name="api_key" placeholder="Enter your API key" required
+                                        class="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-primary focus:border-transparent">
+                                </div>
+                            </div>
+                            <div class="flex justify-end mt-3">
+                                <button type="submit" class="bg-primary text-white px-4 py-2 rounded-lg hover:bg-indigo-700 text-sm">
+                                    Add Key
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            <!-- Add New Key Form (simplified - creates default account if needed) -->
+            {% if active_group %}
+            <div>
+                <button onclick="document.getElementById('add-form-{{ provider.id }}').classList.toggle('hidden')"
+                    class="text-primary text-sm hover:underline flex items-center space-x-1">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                    </svg>
+                    <span>Add {{ provider.name }} key</span>
+                </button>
+                <form id="add-form-{{ provider.id }}" action="/providers/{{ provider.id }}" method="POST" class="mt-4 hidden space-y-3">
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs font-medium text-gray-700 mb-1">Key Name *</label>
+                            <input type="text" name="name" placeholder="e.g., Production, Development" required
+                                class="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-primary focus:border-transparent">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-gray-700 mb-1">Account Email</label>
+                            <input type="email" name="account_email" placeholder="account@example.com"
+                                class="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-primary focus:border-transparent">
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs font-medium text-gray-700 mb-1">Account Phone (optional)</label>
+                            <input type="tel" name="account_phone" placeholder="+1 555 123 4567"
+                                class="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-primary focus:border-transparent">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-gray-700 mb-1">API Key *</label>
+                            <input type="password" name="api_key" placeholder="Enter your API key" required
+                                class="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-primary focus:border-transparent">
+                        </div>
+                    </div>
+                    <div class="flex justify-end">
+                        <button type="submit" class="bg-primary text-white px-4 py-2 rounded-lg hover:bg-indigo-700 text-sm">
+                            Add Key
+                        </button>
+                    </div>
+                </form>
+            </div>
+            {% endif %}
+
+            <!-- Model Settings Section -->
+            {% if active_group and provider.id == 'openrouter' %}
+            <div class="mt-6 pt-4 border-t">
+                <div class="flex items-center justify-between mb-3">
+                    <h4 class="text-sm font-medium text-gray-700">Available Models</h4>
+                    <div class="flex items-center space-x-2">
+                        <span id="model-status-{{ provider.id }}" class="text-xs text-gray-500">
+                            {% if model_counts.get(provider.id) %}
+                            {{ model_counts[provider.id].enabled }} enabled of {{ model_counts[provider.id].total }}
+                            {% else %}
+                            No models synced
+                            {% endif %}
+                        </span>
+                        <button onclick="syncModels('{{ provider.id }}')"
+                            id="sync-btn-{{ provider.id }}"
+                            class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded transition-colors flex items-center space-x-1">
+                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                            </svg>
+                            <span>Sync Models</span>
+                        </button>
+                        <button onclick="openModelSettings('{{ provider.id }}')"
+                            class="text-xs bg-primary hover:bg-indigo-700 text-white px-3 py-1.5 rounded transition-colors flex items-center space-x-1">
+                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                            </svg>
+                            <span>Configure</span>
+                        </button>
+                    </div>
+                </div>
+                <p class="text-xs text-gray-500">
+                    Sync models from OpenRouter to get the latest available models with pricing.
+                    Enable or disable models to control which ones appear in the chat.
+                </p>
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Usage Instructions -->
+    <div class="mt-8 bg-blue-50 p-6 rounded-xl border border-blue-100">
+        <h3 class="font-semibold text-blue-800 mb-2">How to use</h3>
+        <p class="text-sm text-blue-700 mb-3">
+            After adding your provider keys, use Artemis by changing the <code class="bg-blue-100 px-1 rounded">base_url</code> in your SDK.
+            The default key for each provider will be used unless overridden in your API key settings.
+        </p>
+        <div class="bg-white p-4 rounded-lg text-sm font-mono overflow-x-auto">
+            <div class="text-gray-500"># OpenAI</div>
+            <div>base_url="https://your-artemis.com/v1/openai"</div>
+            <div class="text-gray-500 mt-2"># Anthropic</div>
+            <div>base_url="https://your-artemis.com/v1/anthropic"</div>
+            <div class="text-gray-500 mt-2"># Google</div>
+            <div>base_url="https://your-artemis.com/v1/google"</div>
+        </div>
+    </div>
+</div>
+
+<!-- Model Settings Modal -->
+<div id="model-settings-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50 flex items-center justify-center">
+    <div class="bg-white rounded-xl shadow-xl max-w-4xl w-full mx-4 max-h-[80vh] flex flex-col">
+        <div class="p-6 border-b flex items-center justify-between">
+            <h2 class="text-xl font-bold">Model Settings</h2>
+            <button onclick="closeModelSettings()" class="text-gray-400 hover:text-gray-600">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                </svg>
+            </button>
+        </div>
+        <div class="p-6 overflow-y-auto flex-1">
+            <!-- Search/Filter -->
+            <div class="mb-4 space-y-3">
+                <div class="flex items-center space-x-4">
+                    <input type="text" id="model-search" placeholder="Search models..." oninput="filterModels()"
+                        class="flex-1 px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent">
+                    <label class="flex items-center space-x-2 text-sm">
+                        <input type="checkbox" id="show-enabled-only" onchange="filterModels()" class="rounded text-primary focus:ring-primary">
+                        <span>Enabled only</span>
+                    </label>
+                </div>
+                <!-- Advanced Filters -->
+                <div class="flex flex-wrap gap-3 items-center">
+                    <select id="filter-vendor" onchange="filterModels()" class="px-3 py-1.5 border rounded-lg text-sm focus:ring-2 focus:ring-primary">
+                        <option value="">All vendors</option>
+                    </select>
+                    <select id="filter-modality" onchange="filterModels()" class="px-3 py-1.5 border rounded-lg text-sm focus:ring-2 focus:ring-primary">
+                        <option value="">All modalities</option>
+                    </select>
+                    <select id="filter-context" onchange="filterModels()" class="px-3 py-1.5 border rounded-lg text-sm focus:ring-2 focus:ring-primary">
+                        <option value="">Any context</option>
+                        <option value="8000">8k+</option>
+                        <option value="32000">32k+</option>
+                        <option value="64000">64k+</option>
+                        <option value="128000">128k+</option>
+                    </select>
+                    <label class="flex items-center space-x-2 text-sm">
+                        <input type="checkbox" id="filter-tools" onchange="filterModels()" class="rounded text-primary focus:ring-primary">
+                        <span>Supports tools</span>
+                    </label>
+                    <label class="flex items-center space-x-2 text-sm">
+                        <input type="checkbox" id="filter-vision" onchange="filterModels()" class="rounded text-primary focus:ring-primary">
+                        <span>Supports vision</span>
+                    </label>
+                    <button onclick="clearFilters()" class="text-xs text-gray-500 hover:text-gray-700 underline">
+                        Clear filters
+                    </button>
+                </div>
+            </div>
+            <!-- Models Table -->
+            <div id="models-list" class="space-y-2">
+                <div class="text-center py-8 text-gray-500">Loading models...</div>
+            </div>
+        </div>
+        <div class="p-4 border-t bg-gray-50 rounded-b-xl flex justify-between items-center">
+            <span id="models-summary" class="text-sm text-gray-600"></span>
+            <button onclick="closeModelSettings()" class="bg-primary text-white px-4 py-2 rounded-lg hover:bg-indigo-700">
+                Done
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+let currentProviderId = null;
+let allModels = [];
+
+async function revealKey(keyId) {
+    const btn = document.getElementById('reveal-btn-' + keyId);
+    const hiddenSpan = document.getElementById('key-hidden-' + keyId);
+    const revealedSpan = document.getElementById('key-revealed-' + keyId);
+
+    if (revealedSpan.classList.contains('hidden')) {
+        // Reveal the key
+        btn.textContent = 'Loading...';
+        try {
+            const response = await fetch('/providers/key/' + keyId + '/reveal');
+            const data = await response.json();
+            if (data.key) {
+                revealedSpan.textContent = data.key;
+                hiddenSpan.classList.add('hidden');
+                revealedSpan.classList.remove('hidden');
+                btn.textContent = 'Hide';
+            } else {
+                btn.textContent = 'Error';
+            }
+        } catch (e) {
+            btn.textContent = 'Error';
+        }
+    } else {
+        // Hide the key
+        hiddenSpan.classList.remove('hidden');
+        revealedSpan.classList.add('hidden');
+        revealedSpan.textContent = '';
+        btn.textContent = 'Reveal';
+    }
+}
+
+async function syncModels(providerId) {
+    const btn = document.getElementById('sync-btn-' + providerId);
+    const originalContent = btn.innerHTML;
+    btn.innerHTML = '<svg class="w-3 h-3 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg><span>Syncing...</span>';
+    btn.disabled = true;
+
+    try {
+        const response = await fetch('/providers/' + providerId + '/models/sync', {
+            method: 'POST'
+        });
+        const data = await response.json();
+
+        if (data.success) {
+            // Update status
+            const statusEl = document.getElementById('model-status-' + providerId);
+            if (statusEl) {
+                const enabledCount = allModels.filter(m => m.is_enabled).length || 0;
+                statusEl.textContent = `${enabledCount} enabled of ${data.total}`;
+            }
+            alert(`Synced ${data.total} models. Added: ${data.added}, Updated: ${data.updated}`);
+            // Reload page to show updated counts
+            location.reload();
+        } else {
+            alert('Error: ' + (data.error || 'Unknown error'));
+        }
+    } catch (e) {
+        alert('Error syncing models: ' + e.message);
+    } finally {
+        btn.innerHTML = originalContent;
+        btn.disabled = false;
+    }
+}
+
+async function openModelSettings(providerId) {
+    currentProviderId = providerId;
+    const modal = document.getElementById('model-settings-modal');
+    const modelsList = document.getElementById('models-list');
+    modal.classList.remove('hidden');
+
+    // Load models
+    modelsList.innerHTML = '<div class="text-center py-8 text-gray-500">Loading models...</div>';
+
+    try {
+        const response = await fetch('/providers/' + providerId + '/models');
+        const data = await response.json();
+        allModels = data.models || [];
+        populateFilterDropdowns();
+        renderModels();
+    } catch (e) {
+        modelsList.innerHTML = '<div class="text-center py-8 text-red-500">Error loading models: ' + e.message + '</div>';
+    }
+}
+
+function populateFilterDropdowns() {
+    // Extract unique vendors from model_id (prefix before first slash)
+    const vendors = new Set();
+    const modalities = new Set();
+
+    allModels.forEach(m => {
+        // Vendor is prefix before first slash (e.g., "openai" from "openai/gpt-4o")
+        const vendor = m.model_id.split('/')[0];
+        if (vendor) vendors.add(vendor);
+
+        // Modality from raw_data.architecture.modality
+        if (m.raw_data?.architecture?.modality) {
+            modalities.add(m.raw_data.architecture.modality);
+        }
+    });
+
+    // Populate vendor dropdown
+    const vendorSelect = document.getElementById('filter-vendor');
+    vendorSelect.innerHTML = '<option value="">All vendors</option>';
+    Array.from(vendors).sort().forEach(v => {
+        vendorSelect.innerHTML += `<option value="${v}">${v}</option>`;
+    });
+
+    // Populate modality dropdown
+    const modalitySelect = document.getElementById('filter-modality');
+    modalitySelect.innerHTML = '<option value="">All modalities</option>';
+    Array.from(modalities).sort().forEach(m => {
+        modalitySelect.innerHTML += `<option value="${m}">${m}</option>`;
+    });
+}
+
+function closeModelSettings() {
+    const modal = document.getElementById('model-settings-modal');
+    modal.classList.add('hidden');
+    currentProviderId = null;
+    allModels = [];
+    clearFilters(false);
+    // Reload to update counts
+    location.reload();
+}
+
+function clearFilters(rerender = true) {
+    document.getElementById('model-search').value = '';
+    document.getElementById('show-enabled-only').checked = false;
+    document.getElementById('filter-vendor').value = '';
+    document.getElementById('filter-modality').value = '';
+    document.getElementById('filter-context').value = '';
+    document.getElementById('filter-tools').checked = false;
+    document.getElementById('filter-vision').checked = false;
+    if (rerender) {
+        renderModels();
+    }
+}
+
+function filterModels() {
+    renderModels();
+}
+
+function formatPrice(cents) {
+    if (cents === null || cents === undefined) return '-';
+    // Convert cents to dollars (cents/1M tokens -> $/1M tokens)
+    const dollars = cents / 100;
+    if (dollars < 0.01) return '$' + dollars.toFixed(4);
+    if (dollars < 1) return '$' + dollars.toFixed(2);
+    return '$' + dollars.toFixed(2);
+}
+
+function renderModels() {
+    const modelsList = document.getElementById('models-list');
+    const searchTerm = document.getElementById('model-search').value.toLowerCase();
+    const showEnabledOnly = document.getElementById('show-enabled-only').checked;
+    const vendorFilter = document.getElementById('filter-vendor').value;
+    const modalityFilter = document.getElementById('filter-modality').value;
+    const contextFilter = parseInt(document.getElementById('filter-context').value) || 0;
+    const toolsFilter = document.getElementById('filter-tools').checked;
+    const visionFilter = document.getElementById('filter-vision').checked;
+
+    let filtered = allModels.filter(m => {
+        const matchesSearch = m.model_id.toLowerCase().includes(searchTerm) ||
+                              (m.name && m.name.toLowerCase().includes(searchTerm));
+        const matchesEnabled = !showEnabledOnly || m.is_enabled;
+
+        // Vendor filter (prefix before first slash)
+        const vendor = m.model_id.split('/')[0];
+        const matchesVendor = !vendorFilter || vendor === vendorFilter;
+
+        // Modality filter
+        const modality = m.raw_data?.architecture?.modality || '';
+        const matchesModality = !modalityFilter || modality === modalityFilter;
+
+        // Context length filter
+        const contextLength = m.context_length || 0;
+        const matchesContext = contextLength >= contextFilter;
+
+        // Tools support filter (check supported_parameters)
+        const supportedParams = m.raw_data?.supported_parameters || [];
+        const supportsTools = supportedParams.includes('tools');
+        const matchesTools = !toolsFilter || supportsTools;
+
+        // Vision support filter (check input_modalities for 'image')
+        const inputModalities = m.raw_data?.architecture?.input_modalities || [];
+        const supportsVision = inputModalities.includes('image');
+        const matchesVision = !visionFilter || supportsVision;
+
+        return matchesSearch && matchesEnabled && matchesVendor && matchesModality && matchesContext && matchesTools && matchesVision;
+    });
+
+    // Sort: enabled first, then alphabetically
+    filtered.sort((a, b) => {
+        if (a.is_enabled !== b.is_enabled) return b.is_enabled - a.is_enabled;
+        return a.model_id.localeCompare(b.model_id);
+    });
+
+    const enabledCount = allModels.filter(m => m.is_enabled).length;
+    const filteredText = filtered.length < allModels.length ? ` (${filtered.length} shown)` : '';
+    document.getElementById('models-summary').textContent = `${enabledCount} enabled of ${allModels.length} total${filteredText}`;
+
+    if (filtered.length === 0) {
+        modelsList.innerHTML = '<div class="text-center py-8 text-gray-500">No models found</div>';
+        return;
+    }
+
+    modelsList.innerHTML = filtered.map(m => {
+        const supportedParams = m.raw_data?.supported_parameters || [];
+        const supportsTools = supportedParams.includes('tools');
+        const inputModalities = m.raw_data?.architecture?.input_modalities || [];
+        const supportsVision = inputModalities.includes('image');
+        const vendor = m.model_id.split('/')[0];
+        const modality = m.raw_data?.architecture?.modality || '';
+
+        return `
+        <div class="border rounded-lg p-3 ${m.is_enabled ? 'bg-green-50 border-green-200' : 'bg-gray-50'}">
+            <div class="flex items-start justify-between">
+                <div class="flex-1 min-w-0">
+                    <div class="flex items-center space-x-2 flex-wrap gap-1">
+                        <label class="flex items-center cursor-pointer">
+                            <input type="checkbox" ${m.is_enabled ? 'checked' : ''}
+                                onchange="toggleModel('${m.id}', this.checked)"
+                                class="rounded text-primary focus:ring-primary mr-2">
+                            <span class="font-medium text-sm">${m.model_id}</span>
+                        </label>
+                        <span class="text-xs bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded">${vendor}</span>
+                        ${supportsTools ? '<span class="text-xs bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded">tools</span>' : ''}
+                        ${supportsVision ? '<span class="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">vision</span>' : ''}
+                    </div>
+                    ${m.name && m.name !== m.model_id ? `<div class="text-xs text-gray-500 mt-1">${m.name}</div>` : ''}
+                    ${m.description ? `<div class="text-xs text-gray-400 mt-1 truncate">${m.description}</div>` : ''}
+                    ${modality ? `<div class="text-xs text-gray-400 mt-1">${modality}</div>` : ''}
+                </div>
+                <div class="text-right text-xs text-gray-500 flex-shrink-0 ml-4">
+                    ${m.context_length ? `<div>${(m.context_length / 1000).toFixed(0)}k context</div>` : ''}
+                    <div class="mt-1">
+                        <span class="text-green-600">In: ${formatPrice(m.input_price_per_1m)}</span>
+                        <span class="mx-1">/</span>
+                        <span class="text-blue-600">Out: ${formatPrice(m.output_price_per_1m)}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `}).join('');
+}
+
+async function toggleModel(modelId, enabled) {
+    try {
+        const formData = new FormData();
+        formData.append('enabled', enabled);
+
+        const response = await fetch('/providers/models/' + modelId + '/toggle', {
+            method: 'POST',
+            body: formData
+        });
+        const data = await response.json();
+
+        if (data.success) {
+            // Update local state
+            const model = allModels.find(m => m.id === modelId);
+            if (model) {
+                model.is_enabled = enabled;
+            }
+            // Update summary
+            const enabledCount = allModels.filter(m => m.is_enabled).length;
+            document.getElementById('models-summary').textContent = `${enabledCount} enabled of ${allModels.length} total`;
+        } else {
+            alert('Error: ' + (data.error || 'Unknown error'));
+            // Revert checkbox
+            renderModels();
+        }
+    } catch (e) {
+        alert('Error toggling model: ' + e.message);
+        renderModels();
+    }
+}
+</script>
+{% endblock %}

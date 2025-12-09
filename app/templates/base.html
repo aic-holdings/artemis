@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Artemis{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                    },
+                    colors: {
+                        primary: '#1a3a4a',
+                        secondary: '#6b7f3a',
+                        accent: '#8b9a5c',
+                        cream: '#f5f0e8',
+                        'cream-dark': '#ebe4d8',
+                    },
+                    boxShadow: {
+                        'soft': '0 2px 15px -3px rgba(26, 58, 74, 0.07), 0 10px 20px -2px rgba(26, 58, 74, 0.04)',
+                        'soft-lg': '0 10px 40px -10px rgba(26, 58, 74, 0.1), 0 2px 10px -2px rgba(26, 58, 74, 0.04)',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { font-family: 'Inter', system-ui, sans-serif; }
+        .gradient-bg {
+            background: linear-gradient(135deg, #1a3a4a 0%, #2d5a6e 100%);
+        }
+        .nav-glass {
+            background: rgba(245, 240, 232, 0.95);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+        }
+        .card-hover {
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .card-hover:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 40px -10px rgba(26, 58, 74, 0.15);
+        }
+        .link-hover {
+            position: relative;
+            transition: color 0.2s ease;
+        }
+        .link-hover::after {
+            content: '';
+            position: absolute;
+            width: 0;
+            height: 2px;
+            bottom: -2px;
+            left: 0;
+            background: #6b7f3a;
+            transition: width 0.2s ease;
+        }
+        .link-hover:hover::after {
+            width: 100%;
+        }
+        .btn-primary {
+            background: #1a3a4a;
+            transition: all 0.2s ease;
+        }
+        .btn-primary:hover {
+            background: #2d5a6e;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(26, 58, 74, 0.3);
+        }
+        .btn-secondary {
+            background: #6b7f3a;
+            transition: all 0.2s ease;
+        }
+        .btn-secondary:hover {
+            background: #5a6b30;
+            transform: translateY(-1px);
+        }
+    </style>
+</head>
+<body class="bg-cream min-h-screen antialiased">
+    <!-- Navigation -->
+    <nav class="nav-glass sticky top-0 z-50 border-b border-primary/10">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex items-center">
+                    <a href="/" class="text-2xl font-bold text-primary">Artemis</a>
+                </div>
+                <div class="flex items-center space-x-5">
+                    {% if user %}
+                        <a href="/dashboard" class="text-primary/70 hover:text-primary link-hover text-sm font-medium">Dashboard</a>
+                        <a href="/chat" class="text-primary/70 hover:text-primary link-hover text-sm font-medium">Chat</a>
+                        <a href="/logs" class="text-primary/70 hover:text-primary link-hover text-sm font-medium">Logs</a>
+                        <a href="/health-status" class="text-primary/70 hover:text-primary link-hover text-sm font-medium">Health</a>
+                        <a href="/api-keys" class="text-primary/70 hover:text-primary link-hover text-sm font-medium">API Keys</a>
+                        <a href="/providers" class="text-primary/70 hover:text-primary link-hover text-sm font-medium">Providers</a>
+                        <a href="/groups" class="text-primary/70 hover:text-primary link-hover text-sm font-medium">Groups</a>
+                        <a href="/guide" class="text-primary/70 hover:text-primary link-hover text-sm font-medium">Guide</a>
+                        <a href="/agent-guide" class="text-primary/70 hover:text-primary link-hover text-sm font-medium">AI Agent</a>
+                        <a href="/docs" class="text-primary/70 hover:text-primary link-hover text-sm font-medium">API Docs</a>
+
+                        <!-- User Dropdown -->
+                        <div class="relative ml-2" x-data="{ open: false, orgOpen: false }">
+                            <button @click="open = !open" class="flex items-center space-x-2 text-primary/70 hover:text-primary focus:outline-none px-3 py-1.5 rounded-lg hover:bg-cream-dark transition-colors">
+                                <span class="text-sm font-medium">{{ user.email }}</span>
+                                <svg class="w-4 h-4 transition-transform" :class="{ 'rotate-180': open }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                                </svg>
+                            </button>
+                            <div x-show="open" @click.away="open = false"
+                                 x-transition:enter="transition ease-out duration-100"
+                                 x-transition:enter-start="transform opacity-0 scale-95"
+                                 x-transition:enter-end="transform opacity-100 scale-100"
+                                 x-transition:leave="transition ease-in duration-75"
+                                 x-transition:leave-start="transform opacity-100 scale-100"
+                                 x-transition:leave-end="transform opacity-0 scale-95"
+                                 class="absolute right-0 mt-2 w-56 bg-cream rounded-xl shadow-soft-lg py-2 z-50 border border-primary/10">
+                                <!-- Organization Switcher Submenu -->
+                                {% if organizations %}
+                                <div class="relative" @mouseenter="orgOpen = true" @mouseleave="orgOpen = false">
+                                    <button class="w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center justify-between">
+                                        <span>
+                                            {% if active_org %}
+                                            <span class="text-indigo-600">{{ active_org.name }}</span>
+                                            {% else %}
+                                            <span class="text-gray-500">No organization</span>
+                                            {% endif %}
+                                        </span>
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                                        </svg>
+                                    </button>
+                                    <!-- Nested Org Menu -->
+                                    <div x-show="orgOpen"
+                                         class="absolute left-full top-0 ml-1 w-48 bg-white rounded-md shadow-lg py-1 border">
+                                        {% for org in organizations %}
+                                        <form action="/switch-org" method="POST" class="m-0">
+                                            <input type="hidden" name="org_id" value="{{ org.id }}">
+                                            <button type="submit"
+                                                    class="w-full text-left px-4 py-2 text-sm hover:bg-gray-100
+                                                    {% if active_org and active_org.id == org.id %}
+                                                    text-indigo-600 bg-indigo-50
+                                                    {% else %}
+                                                    text-gray-700
+                                                    {% endif %}">
+                                                {{ org.name }}
+                                            </button>
+                                        </form>
+                                        {% endfor %}
+                                        {% if active_org %}
+                                        <div class="border-t my-1"></div>
+                                        <form action="/clear-org" method="POST" class="m-0">
+                                            <button type="submit" class="w-full text-left px-4 py-2 text-sm text-gray-500 hover:bg-gray-100">
+                                                Clear selection
+                                            </button>
+                                        </form>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                {% endif %}
+
+                                <!-- Group Switcher (only show when org is selected and groups exist) -->
+                                {% if active_org and groups and groups|length > 0 %}
+                                <div class="relative" x-data="{ groupOpen: false }" @mouseenter="groupOpen = true" @mouseleave="groupOpen = false">
+                                    <button class="w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center justify-between">
+                                        <span>
+                                            <span class="text-gray-500 text-xs">Group:</span>
+                                            {% if active_group %}
+                                            <span class="text-secondary">{{ active_group.name }}</span>
+                                            {% else %}
+                                            <span class="text-secondary">All Groups</span>
+                                            {% endif %}
+                                        </span>
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                                        </svg>
+                                    </button>
+                                    <!-- Nested Group Menu -->
+                                    <div x-show="groupOpen"
+                                         class="absolute left-full top-0 ml-1 w-48 bg-white rounded-md shadow-lg py-1 border">
+                                        <!-- All Groups option -->
+                                        <form action="/clear-group" method="POST" class="m-0">
+                                            <button type="submit"
+                                                    class="w-full text-left px-4 py-2 text-sm hover:bg-gray-100
+                                                    {% if not active_group %}
+                                                    text-secondary bg-green-50
+                                                    {% else %}
+                                                    text-gray-700
+                                                    {% endif %}">
+                                                All Groups
+                                            </button>
+                                        </form>
+                                        <div class="border-t my-1"></div>
+                                        {% for group in groups %}
+                                        <form action="/switch-group" method="POST" class="m-0">
+                                            <input type="hidden" name="group_id" value="{{ group.id }}">
+                                            <button type="submit"
+                                                    class="w-full text-left px-4 py-2 text-sm hover:bg-gray-100
+                                                    {% if active_group and active_group.id == group.id %}
+                                                    text-secondary bg-green-50
+                                                    {% else %}
+                                                    text-gray-700
+                                                    {% endif %}">
+                                                {{ group.name }}
+                                                {% if group.is_default %}<span class="text-xs text-gray-400">(default)</span>{% endif %}
+                                            </button>
+                                        </form>
+                                        {% endfor %}
+                                    </div>
+                                </div>
+                                {% endif %}
+
+                                {% if organizations %}
+                                <div class="border-t my-1"></div>
+                                {% endif %}
+                                <a href="/settings" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Settings</a>
+                                <a href="/logout" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Logout</a>
+                            </div>
+                        </div>
+                    {% else %}
+                        <a href="/login" class="text-primary/70 hover:text-primary link-hover text-sm font-medium">Login</a>
+                        <a href="/register" class="btn-primary text-white px-5 py-2 rounded-full text-sm font-medium">Get Started</a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-primary text-white py-10 mt-16">
+        <div class="max-w-7xl mx-auto px-4 text-center">
+            <div class="text-2xl font-bold text-cream mb-3">Artemis</div>
+            <p class="text-cream/60 text-sm">Built by AIC Holdings</p>
+        </div>
+    </footer>
+
+    <!-- Frontend Error Logging (localhost mode only) -->
+    <script>
+    (function() {
+        // Only enable in localhost mode
+        const host = window.location.hostname;
+        if (host !== 'localhost' && host !== '127.0.0.1' && host !== '0.0.0.0') {
+            return;
+        }
+
+        // Send error to backend
+        async function logError(level, message, errorType, stack, component, metadata) {
+            try {
+                await fetch('/api/log-error', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        level: level,
+                        message: message,
+                        error_type: errorType,
+                        stack_trace: stack,
+                        page: window.location.pathname,
+                        component: component,
+                        metadata: metadata
+                    })
+                });
+            } catch (e) {
+                // Silently fail - we don't want logging failures to cause more errors
+                console.warn('[Artemis] Failed to log error to backend:', e);
+            }
+        }
+
+        // Global error handler for uncaught exceptions
+        window.onerror = function(message, source, lineno, colno, error) {
+            logError(
+                'error',
+                message,
+                error ? error.name : 'Error',
+                error ? error.stack : `at ${source}:${lineno}:${colno}`,
+                null,
+                { source: source, line: lineno, column: colno }
+            );
+            return false; // Let the error propagate to console
+        };
+
+        // Global handler for unhandled promise rejections
+        window.onunhandledrejection = function(event) {
+            const reason = event.reason;
+            logError(
+                'error',
+                reason instanceof Error ? reason.message : String(reason),
+                reason instanceof Error ? reason.name : 'UnhandledRejection',
+                reason instanceof Error ? reason.stack : null,
+                null,
+                { type: 'unhandled_promise_rejection' }
+            );
+        };
+
+        // Expose helper for manual logging from page scripts
+        window.artemisLog = {
+            error: (msg, component, meta) => logError('error', msg, null, null, component, meta),
+            warn: (msg, component, meta) => logError('warn', msg, null, null, component, meta),
+            info: (msg, component, meta) => logError('info', msg, null, null, component, meta),
+            debug: (msg, component, meta) => logError('debug', msg, null, null, component, meta)
+        };
+
+        console.log('[Artemis] Frontend error logging enabled (localhost mode)');
+    })();
+    </script>
+</body>
+</html>

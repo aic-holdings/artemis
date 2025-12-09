@@ -1,0 +1,693 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Artemis{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 py-8">
+    <div class="flex justify-between items-center mb-8">
+        <h1 class="text-3xl font-bold">Dashboard{% if active_org %} <span class="text-lg font-normal text-primary/50">({{ active_org.name }})</span>{% endif %}</h1>
+
+        <!-- Filters -->
+        <div class="flex items-center space-x-3">
+            <form method="GET" class="flex items-center space-x-2 flex-wrap gap-y-2" id="filter-form">
+                {% if org_users %}
+                <select name="user_id" class="border rounded-lg px-3 py-2 text-sm" onchange="this.form.submit()">
+                    <option value="">All Users</option>
+                    {% for u in org_users %}
+                    <option value="{{ u.id }}" {% if filter_user_id == u.id %}selected{% endif %}>
+                        {{ u.email }}{% if u.id == user.id %} (me){% endif %}
+                    </option>
+                    {% endfor %}
+                </select>
+                {% endif %}
+                <select name="key_id" class="border rounded-lg px-3 py-2 text-sm" onchange="this.form.submit()">
+                    <option value="">All API Keys</option>
+                    {% for key in all_api_keys %}
+                    <option value="{{ key.id }}" {% if filter_key_id == key.id %}selected{% endif %}>
+                        {{ key.name }}{% if key.revoked_at %} (revoked){% endif %}
+                    </option>
+                    {% endfor %}
+                </select>
+                <select name="provider_key_id" class="border rounded-lg px-3 py-2 text-sm" onchange="this.form.submit()">
+                    <option value="">All Provider Accounts</option>
+                    {% for pk in all_provider_keys %}
+                    <option value="{{ pk.id }}" {% if filter_provider_key_id == pk.id %}selected{% endif %}>
+                        {{ pk.provider|capitalize }}: {{ pk.name }}
+                    </option>
+                    {% endfor %}
+                </select>
+                <select name="provider" class="border rounded-lg px-3 py-2 text-sm" onchange="this.form.submit()">
+                    <option value="">All Providers</option>
+                    {% for p in ['openai', 'anthropic', 'google', 'perplexity', 'openrouter'] %}
+                    <option value="{{ p }}" {% if filter_provider == p %}selected{% endif %}>{{ p|capitalize }}</option>
+                    {% endfor %}
+                </select>
+                <select name="app_id" class="border rounded-lg px-3 py-2 text-sm" onchange="this.form.submit()">
+                    <option value="">All Apps</option>
+                    {% for app in app_ids %}
+                    <option value="{{ app }}" {% if filter_app_id == app %}selected{% endif %}>{{ app }}</option>
+                    {% endfor %}
+                </select>
+                <select name="period" class="border rounded-lg px-3 py-2 text-sm" onchange="this.form.submit()">
+                    <option value="7" {% if filter_period == '7' %}selected{% endif %}>Last 7 days</option>
+                    <option value="14" {% if filter_period == '14' %}selected{% endif %}>Last 14 days</option>
+                    <option value="30" {% if filter_period == '30' %}selected{% endif %}>Last 30 days</option>
+                    <option value="qtd" {% if filter_period == 'qtd' %}selected{% endif %}>Quarter to Date</option>
+                    <option value="ytd" {% if filter_period == 'ytd' %}selected{% endif %}>Year to Date</option>
+                    <option value="itd" {% if filter_period == 'itd' %}selected{% endif %}>All Time</option>
+                </select>
+            </form>
+        </div>
+    </div>
+
+    <!-- Stats Cards -->
+    <div class="grid md:grid-cols-4 gap-6 mb-8">
+        <div class="bg-white p-6 rounded-2xl shadow-soft border border-primary/5 card-hover">
+            <div class="text-primary/60 text-sm font-medium mb-1">Total Requests</div>
+            <div class="text-3xl font-bold text-primary">{{ "{:,}".format(total_requests) }}</div>
+        </div>
+        <div class="bg-white p-6 rounded-2xl shadow-soft border border-primary/5 card-hover">
+            <div class="text-primary/60 text-sm font-medium mb-1">Total Tokens</div>
+            <div class="text-3xl font-bold text-primary">{{ "{:,}".format(total_tokens) }}</div>
+            <div class="text-xs text-primary/50 mt-2 flex items-center gap-3">
+                <span class="text-secondary font-medium">{{ "{:,}".format(total_input_tokens) }} in</span>
+                <span class="text-accent font-medium">{{ "{:,}".format(total_output_tokens) }} out</span>
+            </div>
+        </div>
+        <div class="bg-white p-6 rounded-2xl shadow-soft border border-primary/5 card-hover">
+            <div class="text-primary/60 text-sm font-medium mb-1">Total Cost</div>
+            <div class="text-3xl font-bold text-primary">${{ "%.2f"|format(total_cost) }}</div>
+            <div class="text-xs text-primary/50 mt-2 flex items-center gap-3">
+                <span class="text-secondary font-medium">${{ "%.2f"|format(total_input_cost) }} in</span>
+                <span class="text-accent font-medium">${{ "%.2f"|format(total_output_cost) }} out</span>
+            </div>
+        </div>
+        <div class="bg-white p-6 rounded-2xl shadow-soft border border-primary/5 card-hover">
+            <div class="text-primary/60 text-sm font-medium mb-1">Avg Latency</div>
+            <div class="text-3xl font-bold text-primary">{{ "{:,}".format(avg_latency) }}ms</div>
+        </div>
+    </div>
+
+    <!-- Charts Row -->
+    <div class="grid md:grid-cols-4 gap-6 mb-8">
+        <!-- Daily Usage Chart -->
+        <div class="bg-white p-6 rounded-2xl shadow-soft border border-primary/5">
+            <h2 class="text-lg font-semibold text-primary mb-4">Daily Usage</h2>
+            <div style="height: 300px;">
+                {% if daily_usage %}
+                <canvas id="dailyUsageChart"></canvas>
+                {% else %}
+                <div class="flex items-center justify-center h-full text-primary/40">
+                    No usage data for this period.
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Input vs Output Cost Chart -->
+        <div class="bg-white p-6 rounded-2xl shadow-soft border border-primary/5">
+            <h2 class="text-lg font-semibold text-primary mb-4">Input vs Output Cost</h2>
+            <div style="height: 300px;">
+                {% if total_cost > 0 %}
+                <canvas id="inputOutputCostChart"></canvas>
+                {% else %}
+                <div class="flex items-center justify-center h-full text-primary/40">
+                    No cost data yet.
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Cost by Provider Chart -->
+        <div class="bg-white p-6 rounded-2xl shadow-soft border border-primary/5">
+            <h2 class="text-lg font-semibold text-primary mb-4">Cost by Provider</h2>
+            <div style="height: 300px;">
+                {% if usage_by_provider %}
+                <canvas id="costByProviderChart"></canvas>
+                {% else %}
+                <div class="flex items-center justify-center h-full text-primary/40">
+                    No provider usage data yet.
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Cost by App Chart -->
+        <div class="bg-white p-6 rounded-2xl shadow-soft border border-primary/5">
+            <h2 class="text-lg font-semibold text-primary mb-4">Cost by App</h2>
+            <div style="height: 300px;">
+                {% if usage_by_app %}
+                <canvas id="costByAppChart"></canvas>
+                {% else %}
+                <div class="flex items-center justify-center h-full text-gray-500">
+                    No app data yet. Apps should set the X-App-Id header.
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Usage by API Key and Provider Key -->
+    <div class="grid md:grid-cols-2 gap-6 mb-8">
+        <!-- Usage by API Key -->
+        <div class="bg-white p-6 rounded-xl shadow-sm border">
+            <h2 class="text-xl font-semibold mb-4">Usage by API Key</h2>
+            {% if usage_by_api_key %}
+            <div class="overflow-x-auto">
+                <table class="w-full">
+                    <thead>
+                        <tr class="text-left text-gray-500 text-sm border-b">
+                            <th class="pb-3">Key Name</th>
+                            <th class="pb-3">Requests</th>
+                            <th class="pb-3">Tokens</th>
+                            <th class="pb-3">Cost</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for key_id, data in usage_by_api_key.items() %}
+                        <tr class="border-b last:border-0 hover:bg-gray-50 cursor-pointer" onclick="filterByKey('{{ key_id }}')">
+                            <td class="py-3 font-medium">{{ data.name }}</td>
+                            <td class="py-3">{{ "{:,}".format(data.requests) }}</td>
+                            <td class="py-3">{{ "{:,}".format(data.tokens) }}</td>
+                            <td class="py-3">${{ "%.2f"|format(data.cost) }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="text-gray-500">No usage data yet.</p>
+            {% endif %}
+        </div>
+
+        <!-- Usage by Provider Key (for reconciliation) -->
+        <div class="bg-white p-6 rounded-xl shadow-sm border">
+            <h2 class="text-xl font-semibold mb-4">Usage by Provider Account</h2>
+            {% if usage_by_provider_key %}
+            <div class="overflow-x-auto">
+                <table class="w-full">
+                    <thead>
+                        <tr class="text-left text-gray-500 text-sm border-b">
+                            <th class="pb-3">Account</th>
+                            <th class="pb-3">Provider</th>
+                            <th class="pb-3">Requests</th>
+                            <th class="pb-3">Cost</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for pk_id, data in usage_by_provider_key.items() %}
+                        <tr class="border-b last:border-0 hover:bg-gray-50 cursor-pointer" onclick="filterByProviderKey('{{ pk_id }}')">
+                            <td class="py-3 font-medium">{{ data.name }}</td>
+                            <td class="py-3 capitalize text-gray-600">{{ data.provider }}</td>
+                            <td class="py-3">{{ "{:,}".format(data.requests) }}</td>
+                            <td class="py-3">${{ "%.2f"|format(data.cost) }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="text-gray-500">No usage data yet.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Usage by Group (only in All Groups mode) -->
+    {% if all_groups_mode and usage_by_group %}
+    <div class="bg-white p-6 rounded-xl shadow-sm border mb-8">
+        <h2 class="text-xl font-semibold mb-4">Usage by Group</h2>
+        <div class="overflow-x-auto">
+            <table class="w-full">
+                <thead>
+                    <tr class="text-left text-gray-500 text-sm border-b">
+                        <th class="pb-3">Group</th>
+                        <th class="pb-3">Requests</th>
+                        <th class="pb-3">Tokens</th>
+                        <th class="pb-3">Cost</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for group_id, data in usage_by_group.items() %}
+                    <tr class="border-b last:border-0 hover:bg-gray-50">
+                        <td class="py-3 font-medium">{{ data.name }}</td>
+                        <td class="py-3">{{ "{:,}".format(data.requests) }}</td>
+                        <td class="py-3">{{ "{:,}".format(data.tokens) }}</td>
+                        <td class="py-3">${{ "%.2f"|format(data.cost) }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Model Usage and Provider Tables -->
+    <div class="grid md:grid-cols-2 gap-6 mb-8">
+        <!-- Usage by Provider -->
+        <div class="bg-white p-6 rounded-xl shadow-sm border">
+            <h2 class="text-xl font-semibold mb-4">Usage by Provider</h2>
+            {% if usage_by_provider %}
+            <div class="overflow-x-auto">
+                <table class="w-full">
+                    <thead>
+                        <tr class="text-left text-gray-500 text-sm border-b">
+                            <th class="pb-3">Provider</th>
+                            <th class="pb-3">Requests</th>
+                            <th class="pb-3">Input / Output</th>
+                            <th class="pb-3">Cost (In/Out)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for provider, data in usage_by_provider.items() %}
+                        <tr class="border-b last:border-0">
+                            <td class="py-3 capitalize font-medium">{{ provider }}</td>
+                            <td class="py-3">{{ "{:,}".format(data.requests) }}</td>
+                            <td class="py-3 text-sm">
+                                <span class="text-blue-600">{{ "{:,}".format(data.input_tokens) }}</span> /
+                                <span class="text-green-600">{{ "{:,}".format(data.output_tokens) }}</span>
+                            </td>
+                            <td class="py-3 text-sm">
+                                ${{ "%.2f"|format(data.cost) }}
+                                <span class="text-gray-400">(<span class="text-blue-600">${{ "%.2f"|format(data.input_cost) }}</span> / <span class="text-green-600">${{ "%.2f"|format(data.output_cost) }}</span>)</span>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="text-gray-500">No usage data yet.</p>
+            {% endif %}
+        </div>
+
+        <!-- Usage by Model -->
+        <div class="bg-white p-6 rounded-xl shadow-sm border">
+            <h2 class="text-xl font-semibold mb-4">Top Models</h2>
+            {% if usage_by_model %}
+            <div class="overflow-x-auto">
+                <table class="w-full">
+                    <thead>
+                        <tr class="text-left text-gray-500 text-sm border-b">
+                            <th class="pb-3">Model</th>
+                            <th class="pb-3">Provider</th>
+                            <th class="pb-3">Requests</th>
+                            <th class="pb-3">Cost</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for model, data in usage_by_model.items() %}
+                        <tr class="border-b last:border-0 hover:bg-gray-50">
+                            <td class="py-3 font-medium text-sm">
+                                <button onclick="showModelPricing('{{ data.provider }}', '{{ model }}')"
+                                        class="text-primary hover:text-indigo-700 hover:underline cursor-pointer text-left">
+                                    {{ model }}
+                                </button>
+                            </td>
+                            <td class="py-3 capitalize text-gray-600">{{ data.provider }}</td>
+                            <td class="py-3">{{ "{:,}".format(data.requests) }}</td>
+                            <td class="py-3">${{ "%.2f"|format(data.cost) }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="text-gray-500">No usage data yet.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Usage by App -->
+    <div class="bg-white p-6 rounded-xl shadow-sm border mb-8">
+        <h2 class="text-xl font-semibold mb-4">Usage by App</h2>
+        {% if usage_by_app %}
+        <div class="overflow-x-auto">
+            <table class="w-full">
+                <thead>
+                    <tr class="text-left text-gray-500 text-sm border-b">
+                        <th class="pb-3">App ID</th>
+                        <th class="pb-3">Requests</th>
+                        <th class="pb-3">Input / Output Tokens</th>
+                        <th class="pb-3">Cost (In/Out)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for app_id, data in usage_by_app.items() %}
+                    <tr class="border-b last:border-0 hover:bg-gray-50 cursor-pointer" onclick="filterByApp('{{ app_id }}')">
+                        <td class="py-3 font-medium">{{ app_id }}</td>
+                        <td class="py-3">{{ "{:,}".format(data.requests) }}</td>
+                        <td class="py-3 text-sm">
+                            <span class="text-blue-600">{{ "{:,}".format(data.input_tokens) }}</span> /
+                            <span class="text-green-600">{{ "{:,}".format(data.output_tokens) }}</span>
+                        </td>
+                        <td class="py-3 text-sm">
+                            ${{ "%.2f"|format(data.cost) }}
+                            <span class="text-gray-400">(<span class="text-blue-600">${{ "%.2f"|format(data.input_cost) }}</span> / <span class="text-green-600">${{ "%.2f"|format(data.output_cost) }}</span>)</span>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="text-gray-500">No app data yet. Apps should set the X-App-Id header.</p>
+        {% endif %}
+    </div>
+
+    <!-- Quick Links -->
+    <div class="grid md:grid-cols-3 gap-6">
+        <a href="/api-keys" class="bg-white p-6 rounded-xl shadow-sm border hover:border-primary transition-colors">
+            <h3 class="font-semibold mb-2">API Keys</h3>
+            <p class="text-gray-500 text-sm">Manage your Artemis API keys</p>
+        </a>
+        <a href="/providers" class="bg-white p-6 rounded-xl shadow-sm border hover:border-primary transition-colors">
+            <h3 class="font-semibold mb-2">Providers</h3>
+            <p class="text-gray-500 text-sm">Configure LLM provider API keys</p>
+        </a>
+        <a href="/logs" class="bg-white p-6 rounded-xl shadow-sm border hover:border-primary transition-colors">
+            <h3 class="font-semibold mb-2">Usage Logs</h3>
+            <p class="text-gray-500 text-sm">View detailed request history</p>
+        </a>
+    </div>
+</div>
+
+<script>
+// Click handlers for table rows to filter
+function filterByKey(keyId) {
+    const url = new URL(window.location.href);
+    url.searchParams.set('key_id', keyId);
+    window.location.href = url.toString();
+}
+
+function filterByProviderKey(pkId) {
+    const url = new URL(window.location.href);
+    url.searchParams.set('provider_key_id', pkId);
+    window.location.href = url.toString();
+}
+
+function filterByApp(appId) {
+    const url = new URL(window.location.href);
+    url.searchParams.set('app_id', appId);
+    window.location.href = url.toString();
+}
+
+// Daily Usage Chart
+const dailyData = {{ daily_usage | tojson }};
+const dailyCanvas = document.getElementById('dailyUsageChart');
+if (dailyCanvas && dailyData.length > 0) {
+    const dailyCtx = dailyCanvas.getContext('2d');
+    new Chart(dailyCtx, {
+        type: 'line',
+        data: {
+            labels: dailyData.map(d => d.date),
+            datasets: [{
+                label: 'Requests',
+                data: dailyData.map(d => d.requests),
+                borderColor: '#6366f1',
+                backgroundColor: 'rgba(99, 102, 241, 0.1)',
+                fill: true,
+                tension: 0.3
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: false
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true
+                }
+            }
+        }
+    });
+}
+
+// Input vs Output Cost Chart
+const inputCost = {{ total_input_cost | tojson }};
+const outputCost = {{ total_output_cost | tojson }};
+const inputOutputCanvas = document.getElementById('inputOutputCostChart');
+if (inputOutputCanvas && (inputCost > 0 || outputCost > 0)) {
+    const inputOutputCtx = inputOutputCanvas.getContext('2d');
+    new Chart(inputOutputCtx, {
+        type: 'doughnut',
+        data: {
+            labels: ['Input Cost', 'Output Cost'],
+            datasets: [{
+                data: [inputCost, outputCost],
+                backgroundColor: ['#3b82f6', '#10b981'],
+                borderWidth: 0
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'right'
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            const value = context.raw;
+                            const total = inputCost + outputCost;
+                            const pct = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+                            return `${context.label}: $${value.toFixed(2)} (${pct}%)`;
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+// Cost by Provider Chart
+const providerData = {{ usage_by_provider | tojson }};
+const providerCanvas = document.getElementById('costByProviderChart');
+if (providerCanvas && Object.keys(providerData).length > 0) {
+    const providers = Object.keys(providerData);
+    const costs = Object.values(providerData).map(d => d.cost);
+    const colors = ['#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#14b8a6', '#f97316', '#ef4444'];
+
+    const providerCtx = providerCanvas.getContext('2d');
+    new Chart(providerCtx, {
+        type: 'doughnut',
+        data: {
+            labels: providers.map(p => p.charAt(0).toUpperCase() + p.slice(1)),
+            datasets: [{
+                data: costs,
+                backgroundColor: colors.slice(0, providers.length),
+                borderWidth: 0
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'right'
+                }
+            }
+        }
+    });
+}
+
+// Cost by App Chart
+const appData = {{ usage_by_app | tojson }};
+const appCanvas = document.getElementById('costByAppChart');
+if (appCanvas && Object.keys(appData).length > 0) {
+    const apps = Object.keys(appData);
+    const appCosts = Object.values(appData).map(d => d.cost);
+    const appColors = ['#10b981', '#14b8a6', '#06b6d4', '#0ea5e9', '#3b82f6', '#6366f1', '#8b5cf6', '#a855f7'];
+
+    const appCtx = appCanvas.getContext('2d');
+    new Chart(appCtx, {
+        type: 'doughnut',
+        data: {
+            labels: apps,
+            datasets: [{
+                data: appCosts,
+                backgroundColor: appColors.slice(0, apps.length),
+                borderWidth: 0
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'right'
+                }
+            }
+        }
+    });
+}
+
+// Model Pricing Modal Functions
+async function showModelPricing(provider, model) {
+    const modal = document.getElementById('modelPricingModal');
+    const content = document.getElementById('modelPricingContent');
+    const title = document.getElementById('modelPricingTitle');
+
+    // Show loading state
+    title.textContent = model;
+    content.innerHTML = '<div class="text-center py-8"><div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div><p class="mt-2 text-gray-500">Loading pricing...</p></div>';
+    modal.classList.remove('hidden');
+
+    try {
+        const response = await fetch(`/api/model-pricing/${provider}/${model}`);
+        if (response.status === 404) {
+            content.innerHTML = `
+                <div class="text-center py-8">
+                    <p class="text-gray-500 mb-4">Pricing not available for this model.</p>
+                    <p class="text-sm text-gray-400">Try syncing models from Settings to fetch pricing data.</p>
+                </div>`;
+            return;
+        }
+        if (!response.ok) throw new Error('Failed to fetch pricing');
+        const data = await response.json();
+
+        // Build pricing HTML
+        let html = `
+            <div class="space-y-4">
+                <!-- Model Info -->
+                <div class="text-sm text-gray-600">
+                    <div class="font-medium text-gray-800">${data.name || model}</div>
+                    ${data.description ? `<p class="mt-1 text-xs text-gray-500 line-clamp-2">${data.description.substring(0, 150)}${data.description.length > 150 ? '...' : ''}</p>` : ''}
+                </div>
+
+                <!-- Model Specs -->
+                <div class="flex gap-4 text-xs text-gray-500">
+                    ${data.context_length ? `<span>Context: ${(data.context_length / 1000).toFixed(0)}K</span>` : ''}
+                    ${data.modality ? `<span class="capitalize">${data.modality}</span>` : ''}
+                </div>`;
+
+        // Core Pricing
+        if (data.pricing.input || data.pricing.output) {
+            html += `
+                <div class="bg-gray-50 rounded-lg p-4">
+                    <h4 class="font-medium mb-3">Token Pricing (per 1M tokens)</h4>
+                    <div class="grid grid-cols-2 gap-4">`;
+            if (data.pricing.input) {
+                html += `
+                        <div>
+                            <div class="text-xs text-gray-500">Input</div>
+                            <div class="text-lg font-semibold text-blue-600">${data.pricing.input.price_per_1m_tokens}</div>
+                        </div>`;
+            }
+            if (data.pricing.output) {
+                html += `
+                        <div>
+                            <div class="text-xs text-gray-500">Output</div>
+                            <div class="text-lg font-semibold text-green-600">${data.pricing.output.price_per_1m_tokens}</div>
+                        </div>`;
+            }
+            html += `
+                    </div>
+                </div>`;
+        }
+
+        // Reasoning tokens
+        if (data.pricing.reasoning) {
+            html += `
+                <div class="bg-amber-50 rounded-lg p-4">
+                    <h4 class="font-medium mb-2">Reasoning Tokens</h4>
+                    <div class="font-semibold text-amber-600">${data.pricing.reasoning.price_per_1m_tokens}</div>
+                </div>`;
+        }
+
+        // Image pricing (per image, not per token)
+        if (data.pricing.image) {
+            html += `
+                <div class="bg-cyan-50 rounded-lg p-4">
+                    <h4 class="font-medium mb-2">Per Image Cost</h4>
+                    <div class="font-semibold text-cyan-600">${data.pricing.image.per_image}</div>
+                </div>`;
+        }
+
+        // Request pricing
+        if (data.pricing.request) {
+            html += `
+                <div class="bg-orange-50 rounded-lg p-4">
+                    <h4 class="font-medium mb-2">Per Request Cost</h4>
+                    <div class="font-semibold text-orange-600">${data.pricing.request.per_request}</div>
+                </div>`;
+        }
+
+        // Web search pricing
+        if (data.pricing.web_search) {
+            html += `
+                <div class="bg-indigo-50 rounded-lg p-4">
+                    <h4 class="font-medium mb-2">Web Search</h4>
+                    <div class="font-semibold text-indigo-600">${data.pricing.web_search.per_search}</div>
+                </div>`;
+        }
+
+        // Features
+        const features = [];
+        if (data.features.vision) features.push('Vision');
+        if (data.features.audio) features.push('Audio');
+        if (data.features.reasoning_tokens) features.push('Reasoning');
+        if (data.features.web_search) features.push('Web Search');
+
+        if (features.length > 0) {
+            html += `
+                <div class="pt-2 border-t">
+                    <h4 class="text-xs text-gray-500 mb-2">Capabilities</h4>
+                    <div class="flex flex-wrap gap-2">`;
+            for (const f of features) {
+                html += `<span class="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded-full">${f}</span>`;
+            }
+            html += `
+                    </div>
+                </div>`;
+        }
+
+        // Last synced
+        if (data.last_synced) {
+            const syncDate = new Date(data.last_synced);
+            html += `
+                <div class="text-xs text-gray-400 pt-2 border-t">
+                    Last synced: ${syncDate.toLocaleDateString()} ${syncDate.toLocaleTimeString()}
+                </div>`;
+        }
+
+        html += '</div>';
+        content.innerHTML = html;
+
+    } catch (error) {
+        content.innerHTML = `<div class="text-center py-8 text-red-500">Failed to load pricing data</div>`;
+    }
+}
+
+function closeModelPricingModal() {
+    document.getElementById('modelPricingModal').classList.add('hidden');
+}
+
+// Close modal on escape key
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') closeModelPricingModal();
+});
+</script>
+
+<!-- Model Pricing Modal -->
+<div id="modelPricingModal" class="hidden fixed inset-0 z-50 overflow-y-auto">
+    <div class="flex items-center justify-center min-h-screen px-4">
+        <div class="fixed inset-0 bg-black opacity-50" onclick="closeModelPricingModal()"></div>
+        <div class="relative bg-white rounded-xl shadow-xl max-w-md w-full">
+            <div class="flex justify-between items-center p-4 border-b">
+                <h3 id="modelPricingTitle" class="text-lg font-semibold truncate pr-4"></h3>
+                <button onclick="closeModelPricingModal()" class="text-gray-400 hover:text-gray-600">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+            <div id="modelPricingContent" class="p-4 max-h-96 overflow-y-auto"></div>
+        </div>
+    </div>
+</div>
+{% endblock %}

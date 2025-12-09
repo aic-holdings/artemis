@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+
+{% block title %}Usage Logs - Artemis{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 py-8">
+    <div class="flex justify-between items-center mb-8">
+        <h1 class="text-3xl font-bold">Usage Logs</h1>
+
+        <!-- Filters -->
+        <div class="flex items-center space-x-4">
+            <form method="GET" class="flex items-center space-x-3 flex-wrap gap-2" id="filter-form">
+                <select name="key_id" class="border rounded-lg px-3 py-2 text-sm" onchange="this.form.submit()">
+                    <option value="">All Keys</option>
+                    {% for key in api_keys %}
+                    <option value="{{ key.id }}" {% if filter_key_id == key.id %}selected{% endif %}>{{ key.name }} ({{ key.key_prefix }}...)</option>
+                    {% endfor %}
+                </select>
+                <select name="provider" class="border rounded-lg px-3 py-2 text-sm" onchange="this.form.submit()">
+                    <option value="">All Providers</option>
+                    {% for p in ['openai', 'anthropic', 'google', 'perplexity', 'openrouter'] %}
+                    <option value="{{ p }}" {% if filter_provider == p %}selected{% endif %}>{{ p|capitalize }}</option>
+                    {% endfor %}
+                </select>
+                <select name="app_id" class="border rounded-lg px-3 py-2 text-sm" onchange="this.form.submit()">
+                    <option value="">All Apps</option>
+                    {% for app in app_ids %}
+                    <option value="{{ app }}" {% if filter_app_id == app %}selected{% endif %}>{{ app }}</option>
+                    {% endfor %}
+                </select>
+                <select name="model" class="border rounded-lg px-3 py-2 text-sm" onchange="this.form.submit()">
+                    <option value="">All Models</option>
+                    {% for m in models %}
+                    <option value="{{ m }}" {% if filter_model == m %}selected{% endif %}>{{ m }}</option>
+                    {% endfor %}
+                </select>
+            </form>
+        </div>
+    </div>
+
+    <!-- Logs Table -->
+    <div class="bg-white rounded-xl shadow-sm border overflow-hidden">
+        {% if logs %}
+        <div class="overflow-x-auto">
+            <table class="w-full">
+                <thead class="bg-gray-50">
+                    <tr class="text-left text-gray-500 text-sm">
+                        <th class="px-4 py-3">Timestamp</th>
+                        <th class="px-4 py-3">Provider</th>
+                        <th class="px-4 py-3">Model</th>
+                        <th class="px-4 py-3">Input</th>
+                        <th class="px-4 py-3">Output</th>
+                        <th class="px-4 py-3">Cost</th>
+                        <th class="px-4 py-3">Latency</th>
+                        <th class="px-4 py-3">App ID</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for log in logs %}
+                    <tr class="border-t hover:bg-gray-50">
+                        <td class="px-4 py-3 text-sm text-gray-600">{{ log.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                        <td class="px-4 py-3 capitalize font-medium">{{ log.provider }}</td>
+                        <td class="px-4 py-3 text-sm">{{ log.model }}</td>
+                        <td class="px-4 py-3 text-sm text-blue-600">{{ "{:,}".format(log.input_tokens) }}</td>
+                        <td class="px-4 py-3 text-sm text-green-600">{{ "{:,}".format(log.output_tokens) }}</td>
+                        <td class="px-4 py-3 text-sm">${{ "%.4f"|format(log.cost_cents / 100) }}</td>
+                        <td class="px-4 py-3 text-sm">{{ "{:,}".format(log.latency_ms) }}ms</td>
+                        <td class="px-4 py-3 text-sm text-gray-500">{{ log.app_id or '-' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Pagination -->
+        <div class="px-4 py-3 bg-gray-50 border-t flex items-center justify-between">
+            <div class="text-sm text-gray-500">
+                Showing {{ ((page - 1) * per_page) + 1 }} - {{ [page * per_page, total_count]|min }} of {{ total_count }} logs
+            </div>
+            <div class="flex space-x-2">
+                {% set filter_params %}{% if filter_key_id %}&key_id={{ filter_key_id }}{% endif %}{% if filter_provider %}&provider={{ filter_provider }}{% endif %}{% if filter_app_id %}&app_id={{ filter_app_id }}{% endif %}{% if filter_model %}&model={{ filter_model }}{% endif %}{% endset %}
+
+                {% if page > 1 %}
+                <a href="?page={{ page - 1 }}{{ filter_params }}"
+                   class="px-3 py-1 border rounded text-sm hover:bg-gray-100">Previous</a>
+                {% endif %}
+
+                {% for p in range(1, total_pages + 1) %}
+                    {% if p == page %}
+                    <span class="px-3 py-1 bg-primary text-white rounded text-sm">{{ p }}</span>
+                    {% elif p == 1 or p == total_pages or (p >= page - 2 and p <= page + 2) %}
+                    <a href="?page={{ p }}{{ filter_params }}"
+                       class="px-3 py-1 border rounded text-sm hover:bg-gray-100">{{ p }}</a>
+                    {% elif p == page - 3 or p == page + 3 %}
+                    <span class="px-3 py-1 text-gray-400">...</span>
+                    {% endif %}
+                {% endfor %}
+
+                {% if page < total_pages %}
+                <a href="?page={{ page + 1 }}{{ filter_params }}"
+                   class="px-3 py-1 border rounded text-sm hover:bg-gray-100">Next</a>
+                {% endif %}
+            </div>
+        </div>
+        {% else %}
+        <div class="p-8 text-center text-gray-500">
+            <p class="mb-4">No usage logs yet.</p>
+            <p class="text-sm">Make some API calls through Artemis to see your usage here.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  artemis:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-change-me-32-bytes-minimum!!}
+      - DATABASE_URL=sqlite+aiosqlite:///./data/artemis.db
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped

@@ -1,0 +1,538 @@
+{% extends "base.html" %}
+
+{% block title %}AI Agent Configuration - Artemis{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto px-4 py-8">
+    <h1 class="text-3xl font-bold mb-2">AI Agent Configuration Guide</h1>
+    <p class="text-gray-600 mb-8">Machine-readable instructions for configuring AI agents to use Artemis as their LLM proxy.</p>
+
+    <!-- API Key Selection -->
+    <div class="bg-white rounded-xl shadow-sm border mb-6 p-6">
+        <div class="flex justify-between items-center mb-4">
+            <h2 class="text-xl font-semibold">Select API Key</h2>
+            {% if not api_keys %}
+            <a href="/api-keys" class="text-primary text-sm hover:underline">Create an API Key</a>
+            {% endif %}
+        </div>
+
+        {% if keys_by_group %}
+        <div class="space-y-4">
+            {% for group_name, group_keys in keys_by_group.items() %}
+            <div>
+                <div class="text-sm font-medium text-gray-500 mb-2 px-1">{{ group_name }}</div>
+                <div class="space-y-2">
+                    {% for key in group_keys %}
+                    <label class="flex items-center p-3 border rounded-lg cursor-pointer hover:bg-gray-50 {% if selected_key and selected_key.id == key.id %}border-primary bg-indigo-50{% endif %}">
+                        <input type="radio" name="selected_key" value="{{ key.id }}"
+                               {% if selected_key and selected_key.id == key.id %}checked{% endif %}
+                               onchange="selectKey('{{ key.id }}')"
+                               class="mr-3">
+                        <div class="flex-1">
+                            <div class="font-medium">{{ key.name }}</div>
+                            <div class="text-sm text-gray-500">{{ key.key_prefix }}...</div>
+                        </div>
+                        <span class="text-xs text-gray-400">Created {{ key.created_at.strftime('%b %d, %Y') }}</span>
+                    </label>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="text-center py-8 text-gray-500">
+            <p>No API keys found. <a href="/api-keys" class="text-primary hover:underline">Create one first</a>.</p>
+        </div>
+        {% endif %}
+    </div>
+
+    {% if selected_key %}
+    <!-- Complete Agent Instructions (Copyable) -->
+    <div class="bg-white rounded-xl shadow-sm border mb-6 overflow-hidden">
+        <div class="flex items-center justify-between p-4 bg-gradient-to-r from-indigo-500 to-purple-600 text-white">
+            <h2 class="text-xl font-semibold">Complete Agent Instructions</h2>
+            <button onclick="copySection('agent-instructions')" class="bg-white/20 hover:bg-white/30 px-4 py-2 rounded-lg text-sm flex items-center gap-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+                </svg>
+                Copy All
+            </button>
+        </div>
+        <pre id="agent-instructions" class="p-4 text-sm overflow-x-auto bg-gray-900 text-gray-100 whitespace-pre-wrap"><code># Artemis LLM Proxy - AI Agent Configuration
+# ============================================
+# Copy these instructions to configure your AI agent to use Artemis.
+# This provides unified access to multiple LLM providers with usage tracking.
+
+## CONFIGURATION
+ARTEMIS_BASE_URL={{ base_url }}
+ARTEMIS_API_KEY={{ revealed_key or 'YOUR_API_KEY_HERE' }}
+ARTEMIS_DOCS={{ base_url }}/guide
+
+## SUPPORTED PROVIDERS AND ENDPOINTS
+- OpenAI:      {{ base_url }}/v1/openai
+- Anthropic:   {{ base_url }}/v1/anthropic
+- Google:      {{ base_url }}/v1/google
+- Perplexity:  {{ base_url }}/v1/perplexity
+- OpenRouter:  {{ base_url }}/v1/openrouter
+
+## QUICK START - ENVIRONMENT VARIABLES
+
+### For OpenAI SDK (works with most OpenAI-compatible tools):
+OPENAI_BASE_URL={{ base_url }}/v1/openai
+OPENAI_API_KEY={{ revealed_key or 'YOUR_ARTEMIS_KEY' }}
+
+### For Anthropic SDK:
+ANTHROPIC_BASE_URL={{ base_url }}/v1/anthropic
+ANTHROPIC_API_KEY={{ revealed_key or 'YOUR_ARTEMIS_KEY' }}
+
+### For OpenRouter (access 300+ models):
+OPENAI_BASE_URL={{ base_url }}/v1/openrouter
+OPENAI_API_KEY={{ revealed_key or 'YOUR_ARTEMIS_KEY' }}
+
+## PYTHON EXAMPLES
+
+### OpenAI
+```python
+from openai import OpenAI
+
+client = OpenAI(
+    base_url="{{ base_url }}/v1/openai",
+    api_key="{{ revealed_key or 'YOUR_ARTEMIS_KEY' }}"
+)
+
+response = client.chat.completions.create(
+    model="gpt-4o",
+    messages=[{"role": "user", "content": "Hello!"}]
+)
+```
+
+### Anthropic
+```python
+import anthropic
+
+client = anthropic.Anthropic(
+    base_url="{{ base_url }}/v1/anthropic",
+    api_key="{{ revealed_key or 'YOUR_ARTEMIS_KEY' }}"
+)
+
+response = client.messages.create(
+    model="claude-sonnet-4-20250514",
+    max_tokens=1024,
+    messages=[{"role": "user", "content": "Hello!"}]
+)
+```
+
+### OpenRouter (access any model)
+```python
+from openai import OpenAI
+
+client = OpenAI(
+    base_url="{{ base_url }}/v1/openrouter",
+    api_key="{{ revealed_key or 'YOUR_ARTEMIS_KEY' }}"
+)
+
+# Use any OpenRouter model ID
+response = client.chat.completions.create(
+    model="anthropic/claude-3.5-sonnet",  # or meta-llama/llama-3.1-70b-instruct
+    messages=[{"role": "user", "content": "Hello!"}]
+)
+```
+
+## USAGE TRACKING METADATA
+
+Add metadata to track usage per app or user:
+
+```python
+response = client.chat.completions.create(
+    model="gpt-4o",
+    messages=[{"role": "user", "content": "Hello!"}],
+    extra_body={
+        "metadata": {
+            "app_id": "my-agent",
+            "user_id": "user-123"
+        }
+    }
+)
+```
+
+Or via headers:
+```python
+extra_headers={
+    "X-App-ID": "my-agent",
+    "X-User-ID": "user-123"
+}
+```
+
+## VIEWING USAGE
+- Dashboard: {{ base_url }}/dashboard
+- Logs: {{ base_url }}/logs
+- Health Status: {{ base_url }}/health-status
+
+## FEATURES
+- Unified API for OpenAI, Anthropic, Google, Perplexity, OpenRouter
+- Automatic usage and cost tracking
+- Streaming support
+- Tool/function calling
+- Vision (image inputs)
+- All provider-specific features preserved</code></pre>
+    </div>
+
+    <!-- Downloadable Python Client -->
+    <div class="bg-white rounded-xl shadow-sm border mb-6 overflow-hidden">
+        <div class="flex items-center justify-between p-4 bg-gray-50 border-b">
+            <div>
+                <h2 class="text-xl font-semibold">Python Client Setup</h2>
+                <p class="text-sm text-gray-500 mt-1">Download or copy the Artemis Python client helper</p>
+            </div>
+            <div class="flex gap-2">
+                <button onclick="copySection('python-client')" class="bg-gray-100 hover:bg-gray-200 px-4 py-2 rounded-lg text-sm flex items-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+                    </svg>
+                    Copy
+                </button>
+                <button onclick="downloadPythonClient()" class="bg-primary hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                    </svg>
+                    Download
+                </button>
+            </div>
+        </div>
+        <pre id="python-client" class="p-4 text-sm overflow-x-auto bg-gray-900 text-gray-100 whitespace-pre-wrap"><code>"""
+Artemis LLM Proxy Client
+========================
+A helper module for connecting to Artemis, a unified LLM proxy service.
+
+Installation:
+    pip install openai anthropic
+
+Usage:
+    from artemis_client import ArtemisClient
+
+    client = ArtemisClient()
+    response = client.openai.chat.completions.create(
+        model="gpt-4o",
+        messages=[{"role": "user", "content": "Hello!"}]
+    )
+"""
+
+import os
+from typing import Optional
+
+
+class ArtemisClient:
+    """
+    Unified client for accessing LLM providers through Artemis proxy.
+
+    Automatically configures OpenAI and Anthropic SDKs to route through Artemis.
+    """
+
+    # Default configuration - update these for your deployment
+    DEFAULT_BASE_URL = "{{ base_url }}"
+    DEFAULT_API_KEY = "{{ revealed_key or 'YOUR_ARTEMIS_KEY' }}"
+
+    def __init__(
+        self,
+        base_url: Optional[str] = None,
+        api_key: Optional[str] = None,
+        app_id: Optional[str] = None,
+        user_id: Optional[str] = None,
+    ):
+        """
+        Initialize Artemis client.
+
+        Args:
+            base_url: Artemis server URL (default: from DEFAULT_BASE_URL or ARTEMIS_BASE_URL env)
+            api_key: Artemis API key (default: from DEFAULT_API_KEY or ARTEMIS_API_KEY env)
+            app_id: Optional app identifier for usage tracking
+            user_id: Optional user identifier for usage tracking
+        """
+        self.base_url = base_url or os.getenv("ARTEMIS_BASE_URL", self.DEFAULT_BASE_URL)
+        self.api_key = api_key or os.getenv("ARTEMIS_API_KEY", self.DEFAULT_API_KEY)
+        self.app_id = app_id
+        self.user_id = user_id
+
+        self._openai_client = None
+        self._anthropic_client = None
+        self._openrouter_client = None
+
+    @property
+    def openai(self):
+        """Get OpenAI client configured for Artemis."""
+        if self._openai_client is None:
+            from openai import OpenAI
+            self._openai_client = OpenAI(
+                base_url=f"{self.base_url}/v1/openai",
+                api_key=self.api_key,
+                default_headers=self._get_tracking_headers(),
+            )
+        return self._openai_client
+
+    @property
+    def anthropic(self):
+        """Get Anthropic client configured for Artemis."""
+        if self._anthropic_client is None:
+            import anthropic
+            self._anthropic_client = anthropic.Anthropic(
+                base_url=f"{self.base_url}/v1/anthropic",
+                api_key=self.api_key,
+                default_headers=self._get_tracking_headers(),
+            )
+        return self._anthropic_client
+
+    @property
+    def openrouter(self):
+        """Get OpenRouter client (OpenAI-compatible) configured for Artemis."""
+        if self._openrouter_client is None:
+            from openai import OpenAI
+            self._openrouter_client = OpenAI(
+                base_url=f"{self.base_url}/v1/openrouter",
+                api_key=self.api_key,
+                default_headers=self._get_tracking_headers(),
+            )
+        return self._openrouter_client
+
+    def _get_tracking_headers(self) -> dict:
+        """Get headers for usage tracking."""
+        headers = {}
+        if self.app_id:
+            headers["X-App-ID"] = self.app_id
+        if self.user_id:
+            headers["X-User-ID"] = self.user_id
+        return headers
+
+
+# Convenience function for quick setup
+def get_client(
+    provider: str = "openai",
+    base_url: Optional[str] = None,
+    api_key: Optional[str] = None,
+    app_id: Optional[str] = None,
+) -> "ArtemisClient":
+    """
+    Quick setup for getting a configured client.
+
+    Args:
+        provider: "openai", "anthropic", or "openrouter"
+        base_url: Optional Artemis URL override
+        api_key: Optional API key override
+        app_id: Optional app ID for tracking
+
+    Returns:
+        Configured ArtemisClient instance
+
+    Example:
+        client = get_client("openai")
+        response = client.openai.chat.completions.create(
+            model="gpt-4o",
+            messages=[{"role": "user", "content": "Hello!"}]
+        )
+    """
+    return ArtemisClient(base_url=base_url, api_key=api_key, app_id=app_id)
+
+
+if __name__ == "__main__":
+    # Quick test
+    client = ArtemisClient(app_id="artemis-test")
+    print(f"Artemis client configured for: {client.base_url}")
+    print(f"API Key: {client.api_key[:20]}..." if client.api_key else "No API key set")
+</code></pre>
+    </div>
+
+    <!-- Claude Code / Cursor / IDE Configuration -->
+    <div class="bg-white rounded-xl shadow-sm border mb-6 overflow-hidden">
+        <div class="flex items-center justify-between p-4 bg-gray-50 border-b cursor-pointer hover:bg-gray-100" onclick="copySection('ide-config')">
+            <h2 class="text-xl font-semibold">IDE & Agent Tool Configuration</h2>
+            <button class="text-primary text-sm hover:underline flex items-center gap-1">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+                </svg>
+                Copy
+            </button>
+        </div>
+        <pre id="ide-config" class="p-4 text-sm overflow-x-auto bg-gray-900 text-gray-100 whitespace-pre-wrap"><code># IDE and Agent Tool Configuration for Artemis
+# =============================================
+
+## Environment Variables (add to .env or shell profile)
+
+# For OpenAI-compatible tools (Cursor, Continue, Aider, etc.)
+export OPENAI_BASE_URL="{{ base_url }}/v1/openai"
+export OPENAI_API_KEY="{{ revealed_key or 'YOUR_ARTEMIS_KEY' }}"
+
+# For Anthropic-compatible tools (Claude Code, etc.)
+export ANTHROPIC_BASE_URL="{{ base_url }}/v1/anthropic"
+export ANTHROPIC_API_KEY="{{ revealed_key or 'YOUR_ARTEMIS_KEY' }}"
+
+# For tools that support custom base URLs via OpenRouter
+export OPENROUTER_BASE_URL="{{ base_url }}/v1/openrouter"
+export OPENROUTER_API_KEY="{{ revealed_key or 'YOUR_ARTEMIS_KEY' }}"
+
+## Cursor Configuration
+# In Cursor settings, set:
+# - OpenAI Base URL: {{ base_url }}/v1/openai
+# - API Key: {{ revealed_key or 'YOUR_ARTEMIS_KEY' }}
+
+## Continue.dev Configuration
+# In .continue/config.json:
+{
+  "models": [
+    {
+      "title": "GPT-4o via Artemis",
+      "provider": "openai",
+      "model": "gpt-4o",
+      "apiBase": "{{ base_url }}/v1/openai",
+      "apiKey": "{{ revealed_key or 'YOUR_ARTEMIS_KEY' }}"
+    },
+    {
+      "title": "Claude via Artemis",
+      "provider": "openai",
+      "model": "anthropic/claude-3.5-sonnet",
+      "apiBase": "{{ base_url }}/v1/openrouter",
+      "apiKey": "{{ revealed_key or 'YOUR_ARTEMIS_KEY' }}"
+    }
+  ]
+}
+
+## Aider Configuration
+# In .aider.conf.yml or environment:
+export OPENAI_API_BASE="{{ base_url }}/v1/openai"
+export OPENAI_API_KEY="{{ revealed_key or 'YOUR_ARTEMIS_KEY' }}"
+
+## LiteLLM Proxy Configuration
+# In litellm config:
+model_list:
+  - model_name: gpt-4o
+    litellm_params:
+      model: openai/gpt-4o
+      api_base: {{ base_url }}/v1/openai
+      api_key: {{ revealed_key or 'YOUR_ARTEMIS_KEY' }}</code></pre>
+    </div>
+
+    <!-- JSON Configuration Export -->
+    <div class="bg-white rounded-xl shadow-sm border mb-6 overflow-hidden">
+        <div class="flex items-center justify-between p-4 bg-gray-50 border-b">
+            <div>
+                <h2 class="text-xl font-semibold">JSON Configuration</h2>
+                <p class="text-sm text-gray-500 mt-1">Machine-readable configuration for automated setup</p>
+            </div>
+            <div class="flex gap-2">
+                <button onclick="copySection('json-config')" class="bg-gray-100 hover:bg-gray-200 px-4 py-2 rounded-lg text-sm flex items-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+                    </svg>
+                    Copy
+                </button>
+                <button onclick="downloadJsonConfig()" class="bg-primary hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                    </svg>
+                    Download
+                </button>
+            </div>
+        </div>
+        <pre id="json-config" class="p-4 text-sm overflow-x-auto bg-gray-900 text-gray-100"><code>{
+  "artemis": {
+    "version": "1.0",
+    "base_url": "{{ base_url }}",
+    "api_key": "{{ revealed_key or 'YOUR_ARTEMIS_KEY' }}",
+    "documentation": "{{ base_url }}/guide"
+  },
+  "providers": {
+    "openai": {
+      "base_url": "{{ base_url }}/v1/openai",
+      "models": ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo", "o1-preview", "o1-mini"]
+    },
+    "anthropic": {
+      "base_url": "{{ base_url }}/v1/anthropic",
+      "models": ["claude-sonnet-4-20250514", "claude-opus-4-20250514", "claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022"]
+    },
+    "google": {
+      "base_url": "{{ base_url }}/v1/google",
+      "models": ["gemini-1.5-pro", "gemini-1.5-flash", "gemini-1.0-pro"]
+    },
+    "perplexity": {
+      "base_url": "{{ base_url }}/v1/perplexity",
+      "models": ["sonar-pro", "sonar", "sonar-reasoning-pro", "sonar-reasoning"]
+    },
+    "openrouter": {
+      "base_url": "{{ base_url }}/v1/openrouter",
+      "models": ["anthropic/claude-3.5-sonnet", "openai/gpt-4o", "meta-llama/llama-3.1-405b-instruct", "google/gemini-pro-1.5"]
+    }
+  },
+  "environment_variables": {
+    "openai": {
+      "OPENAI_BASE_URL": "{{ base_url }}/v1/openai",
+      "OPENAI_API_KEY": "{{ revealed_key or 'YOUR_ARTEMIS_KEY' }}"
+    },
+    "anthropic": {
+      "ANTHROPIC_BASE_URL": "{{ base_url }}/v1/anthropic",
+      "ANTHROPIC_API_KEY": "{{ revealed_key or 'YOUR_ARTEMIS_KEY' }}"
+    }
+  },
+  "tracking": {
+    "dashboard": "{{ base_url }}/dashboard",
+    "logs": "{{ base_url }}/logs",
+    "metadata_headers": {
+      "app_id": "X-App-ID",
+      "user_id": "X-User-ID"
+    }
+  }
+}</code></pre>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+function selectKey(keyId) {
+    window.location.href = `/agent-guide?key_id=${keyId}`;
+}
+
+function copySection(id) {
+    const element = document.getElementById(id);
+    const text = element.textContent;
+
+    navigator.clipboard.writeText(text).then(() => {
+        // Find and update the copy button
+        const container = element.closest('.overflow-hidden');
+        const btn = container.querySelector('button');
+        if (btn) {
+            const originalHTML = btn.innerHTML;
+            btn.innerHTML = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> Copied!';
+            btn.classList.add('text-green-600');
+
+            setTimeout(() => {
+                btn.innerHTML = originalHTML;
+                btn.classList.remove('text-green-600');
+            }, 2000);
+        }
+    });
+}
+
+function downloadPythonClient() {
+    const content = document.getElementById('python-client').textContent;
+    const blob = new Blob([content], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'artemis_client.py';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
+function downloadJsonConfig() {
+    const content = document.getElementById('json-config').textContent;
+    const blob = new Blob([content], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'artemis_config.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+</script>
+{% endblock %}
