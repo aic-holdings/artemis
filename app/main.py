@@ -74,13 +74,15 @@ app.include_router(proxy_routes.router, tags=["proxy"])
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""
+    from app.config import settings
     return {
         "status": "healthy",
         "service": "artemis",
         "version": "1.0.0",
         "auth": {
             "provider": "custom-jwt",
-            "sso_enabled": False
+            "sso_enabled": settings.SSO_ENABLED,
+            "sso_url": settings.JETTA_SSO_URL if settings.SSO_ENABLED else None,
         }
     }
 

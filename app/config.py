@@ -27,6 +27,13 @@ class Settings:
     LOCALHOST_MODE: bool = os.getenv("LOCALHOST_MODE", "true").lower() == "true"
     LOCALHOST_USER_EMAIL: str = os.getenv("LOCALHOST_USER_EMAIL", "dshanklin@aicholdings.com")
 
+    # Jetta SSO settings
+    SSO_ENABLED: bool = os.getenv("SSO_ENABLED", "true").lower() == "true"
+    JETTA_SSO_URL: str = os.getenv("JETTA_SSO_URL", "https://login.jettaintelligence.com")
+    SSO_COOKIE_NAME: str = "jetta_token"
+    # Artemis URL for SSO callback redirect
+    ARTEMIS_URL: str = os.getenv("ARTEMIS_URL", "https://artemis.jettaintelligence.com")
+
     # Provider base URLs
     PROVIDER_URLS = {
         "openai": "https://api.openai.com",

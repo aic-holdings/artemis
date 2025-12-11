@@ -52,7 +52,10 @@ async def login_page(request: Request, error: str = None):
     from app.config import settings
     if settings.LOCALHOST_MODE and is_localhost_request(request):
         return RedirectResponse(url="/dashboard", status_code=303)
-    return templates.TemplateResponse(request, "login.html", {"error": error})
+    return templates.TemplateResponse(request, "login.html", {
+        "error": error,
+        "sso_enabled": settings.SSO_ENABLED,
+    })
 
 
 @router.get("/register")

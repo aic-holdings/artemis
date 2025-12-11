@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, Form
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, HTMLResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -10,6 +10,7 @@ from app.database import get_db
 from app.models import User, Organization, OrganizationMember, Group, GroupMember
 from app.auth import hash_password, verify_password, create_access_token, decode_access_token
 from app.config import settings
+from app.jetta_sso import get_sso_client
 
 router = APIRouter()
 
@@ -58,8 +59,43 @@ def is_localhost_request(request: Request) -> bool:
     return host.startswith("localhost") or host.startswith("127.0.0.1") or host.startswith("0.0.0.0")
 
 
+async def get_or_create_sso_user(sso_user: dict, db: AsyncSession) -> User:
+    """
+    Get or create a local Artemis user from Jetta SSO user info.
+
+    Args:
+        sso_user: User dict from Jetta SSO containing id, email, display_name, etc.
+        db: Database session
+
+    Returns:
+        Local Artemis User object
+    """
+    email = sso_user.get("email")
+    if not email:
+        raise ValueError("SSO user missing email")
+
+    # Look up existing user by email
+    result = await db.execute(select(User).where(User.email == email))
+    user = result.scalar_one_or_none()
+
+    if not user:
+        # Create new user from SSO data
+        # Use a random password hash since SSO users don't use local passwords
+        import secrets
+        user = User(
+            email=email,
+            password_hash=hash_password(secrets.token_urlsafe(32)),
+        )
+        db.add(user)
+        await db.commit()
+        await db.refresh(user)
+        print(f"Created new Artemis user from SSO: {email}")
+
+    return user
+
+
 async def get_current_user(request: Request, db: AsyncSession = Depends(get_db)) -> UserContext | None:
-    """Get current user context from session cookie, or auto-login in localhost mode."""
+    """Get current user context from session cookie, SSO cookie, or auto-login in localhost mode."""
     user = None
     active_org_id = None
 
@@ -69,21 +105,26 @@ async def get_current_user(request: Request, db: AsyncSession = Depends(get_db))
         # For localhost, check for org in cookie (simpler than JWT for dev)
         active_org_id = request.cookies.get("active_org")
     else:
+        # Try local session token first
         token = request.cookies.get("session")
-        if not token:
-            return None
+        if token:
+            payload = decode_access_token(token)
+            if payload:
+                user_id = payload.get("sub")
+                if user_id:
+                    result = await db.execute(select(User).where(User.id == user_id))
+                    user = result.scalar_one_or_none()
+                    active_org_id = payload.get("org")
 
-        payload = decode_access_token(token)
-        if not payload:
-            return None
-
-        user_id = payload.get("sub")
-        if not user_id:
-            return None
-
-        result = await db.execute(select(User).where(User.id == user_id))
-        user = result.scalar_one_or_none()
-        active_org_id = payload.get("org")
+        # If no local session, try Jetta SSO (if enabled)
+        if not user and settings.SSO_ENABLED:
+            sso_client = get_sso_client()
+            sso_user = await sso_client.get_current_user(request)
+            if sso_user:
+                # Get or create local user from SSO user info
+                user = await get_or_create_sso_user(sso_user, db)
+                # For SSO users, check for org in cookie
+                active_org_id = request.cookies.get("active_org")
 
     if not user:
         return None
@@ -259,10 +300,21 @@ async def login(
 
 @router.get("/logout")
 async def logout():
-    """Logout user."""
+    """Logout user - clears local session and optionally SSO session."""
+    # Clear local session cookies
     response = RedirectResponse(url="/", status_code=303)
     response.delete_cookie("session")
     response.delete_cookie("active_org")
+
+    # If SSO is enabled, redirect to SSO logout to clear the SSO cookie too
+    if settings.SSO_ENABLED:
+        sso_client = get_sso_client()
+        # Redirect to SSO logout, which will then redirect back to Artemis home
+        return RedirectResponse(
+            url=sso_client.logout_url(redirect_uri=f"{settings.ARTEMIS_URL}/"),
+            status_code=303
+        )
+
     return response
 
 
@@ -367,3 +419,86 @@ async def clear_group(request: Request, db: AsyncSession = Depends(get_db)):
     referer = request.headers.get("referer", "/settings")
     response = RedirectResponse(url=referer, status_code=303)
     return response
+
+
+# =============================================================================
+# Jetta SSO Routes
+# =============================================================================
+
+@router.get("/sso/login")
+async def sso_login(redirect_uri: str = "/dashboard"):
+    """
+    Redirect to Jetta SSO login page.
+
+    For popup flow: Opens in popup, redirects to /sso/callback after login.
+    """
+    if not settings.SSO_ENABLED:
+        return RedirectResponse(url="/login?error=sso_disabled", status_code=303)
+
+    # Build the callback URL that Jetta SSO will redirect to after login
+    callback_url = f"{settings.ARTEMIS_URL}/sso/callback?redirect_uri={redirect_uri}"
+
+    # Redirect to Jetta SSO login with our callback URL
+    sso_client = get_sso_client()
+    login_url = sso_client.login_url(redirect_uri=callback_url)
+    return RedirectResponse(url=login_url, status_code=302)
+
+
+@router.get("/sso/callback")
+async def sso_callback(request: Request, redirect_uri: str = "/dashboard"):
+    """
+    SSO callback endpoint - handles return from Jetta SSO login.
+
+    Simply redirects to the requested page since the jetta_token cookie
+    is already set by Jetta SSO on .jettaintelligence.com domain.
+    """
+    return RedirectResponse(url=redirect_uri, status_code=303)
+
+
+@router.get("/sso/logout")
+async def sso_logout(request: Request, redirect_uri: str = "/"):
+    """
+    Logout from both Artemis and Jetta SSO.
+
+    Clears local session cookie and redirects to SSO logout.
+    """
+    # Clear local session
+    response = RedirectResponse(url=redirect_uri, status_code=303)
+    response.delete_cookie("session")
+    response.delete_cookie("active_org")
+
+    # If SSO enabled, also clear via Jetta SSO
+    # Note: The jetta_token cookie is on .jettaintelligence.com domain,
+    # so Artemis can't directly clear it. User needs to visit Jetta SSO logout.
+    if settings.SSO_ENABLED:
+        sso_client = get_sso_client()
+        # Redirect to SSO logout which will clear the SSO cookie
+        return RedirectResponse(
+            url=sso_client.logout_url(redirect_uri=f"{settings.ARTEMIS_URL}{redirect_uri}"),
+            status_code=303
+        )
+
+    return response
+
+
+@router.get("/sso/status")
+async def sso_status(request: Request, db: AsyncSession = Depends(get_db)):
+    """
+    Check SSO authentication status.
+
+    Returns JSON with current auth status - useful for JavaScript polling.
+    """
+    ctx = await get_current_user(request, db)
+
+    if ctx:
+        return {
+            "authenticated": True,
+            "email": ctx.email,
+            "sso_enabled": settings.SSO_ENABLED,
+        }
+
+    return {
+        "authenticated": False,
+        "sso_enabled": settings.SSO_ENABLED,
+        "login_url": f"/sso/login" if settings.SSO_ENABLED else "/login",
+    }
