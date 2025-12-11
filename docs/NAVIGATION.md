@@ -77,47 +77,149 @@ Artemis is a centralized AI management platform that serves as a unified proxy f
 
 ---
 
-## Navigation Structure
+## Navigation Bar (Navbar)
 
-### Primary Navigation (Top Bar)
+The navbar is the primary navigation element, always visible at the top of every page. It provides quick access to all sections of Artemis.
 
-The top navigation bar is always visible and provides access to all major sections:
+### Visual Layout
 
 ```
-[Artemis Logo] | Dashboard | Chat | Logs | Health | API Keys | Providers | Groups | Guide | AI Agent | API Docs | [User Menu ▼]
+┌─────────────────────────────────────────────────────────────────────────────────────────┐
+│  Artemis   Dashboard  Chat  Logs  Health  API Keys  Providers  Groups  Guide  AI Agent  API Docs   user@email.com ▼  │
+└─────────────────────────────────────────────────────────────────────────────────────────┘
+     │            │       │     │      │        │         │        │       │       │         │              │
+     │            │       │     │      │        │         │        │       │       │         │              │
+   Logo      Analytics  Test  History Monitor  Keys    Provider  Teams   Setup  Agent    Swagger      User Menu
+   (home)                                               Config                   Docs     Docs
 ```
 
-#### Navigation Items (Left to Right)
+### Navbar Styling
 
-1. **Artemis** (Logo) - Returns to landing page or dashboard
-2. **Dashboard** - Analytics and usage overview
-3. **Chat** - Interactive chat interface for testing
-4. **Logs** - Detailed request history
-5. **Health** - Provider health status monitoring
-6. **API Keys** - Manage Artemis API keys
-7. **Providers** - Configure provider API keys
-8. **Groups** - Team and access management
-9. **Guide** - Setup and integration guide
-10. **AI Agent** - Agent-specific documentation
-11. **API Docs** - API reference documentation
+- **Background**: Glass effect (`nav-glass`) - semi-transparent cream with blur
+- **Position**: Sticky - stays at top when scrolling
+- **Z-index**: 50 - always on top of page content
+- **Border**: Subtle bottom border (`border-primary/10`)
+- **Height**: 64px (h-16)
+
+### Navigation Links
+
+| Link | URL | Description | When Visible |
+|------|-----|-------------|--------------|
+| **Artemis** | `/` | Logo/brand - returns home | Always |
+| **Dashboard** | `/dashboard` | Analytics, charts, usage metrics | Logged in |
+| **Chat** | `/chat` | Interactive LLM testing interface | Logged in |
+| **Logs** | `/logs` | Request history with filtering | Logged in |
+| **Health** | `/health-status` | Provider status monitoring | Logged in |
+| **API Keys** | `/api-keys` | Manage Artemis API keys | Logged in |
+| **Providers** | `/providers` | Configure LLM provider keys | Logged in |
+| **Groups** | `/groups` | Team management | Logged in |
+| **Guide** | `/guide` | Integration documentation | Logged in |
+| **AI Agent** | `/agent-guide` | Agent-specific docs | Logged in |
+| **API Docs** | `/docs` | Swagger/OpenAPI reference | Logged in |
+| **Login** | `/login` | Sign in page | Logged out |
+| **Get Started** | `/register` | Registration page | Logged out |
+
+### Link Styling
+
+- **Default**: `text-primary/70` (muted navy)
+- **Hover**: `text-primary` (full navy) with animated underline
+- **Underline animation**: Green (`#6b7f3a`) line slides in from left on hover
+- **Font**: 14px (text-sm), medium weight
+- **Spacing**: 20px between links (space-x-5)
 
 ### User Menu (Dropdown)
 
-Click your email in the top-right corner to access:
+Located at the far right of the navbar. Shows user's email address with dropdown arrow.
 
-**Organization Switcher** (hover to expand)
-- Shows current organization or "No organization"
-- Lists all organizations you belong to
-- "Clear selection" option
+```
+┌──────────────────────────┐
+│  user@email.com  ▼       │  ← Click to open dropdown
+└──────────────────────────┘
+         │
+         ▼
+┌──────────────────────────┐
+│ Acme Corp           →    │  ← Organization (hover for submenu)
+│ Group: Engineering  →    │  ← Group (hover for submenu)
+│ ──────────────────────── │
+│ Settings                 │
+│ Logout                   │
+└──────────────────────────┘
+```
 
-**Group Switcher** (hover to expand, only when org selected)
-- Shows current group or "All Groups"
-- Lists all groups you're a member of
-- "All Groups" option to view aggregate data
+#### Dropdown Behavior
 
-**Account Options**
-- Settings - User preferences and organization management
-- Logout - End session
+- **Trigger**: Click email to open, click away to close
+- **Animation**: Fade + scale transition (100ms)
+- **Width**: 224px (w-56)
+- **Style**: Cream background, soft shadow, rounded corners
+
+#### Organization Switcher (Nested Menu)
+
+Appears when you hover over the organization name in dropdown:
+
+```
+┌────────────────────┐
+│ Acme Corp       →  │──┬──────────────────┐
+│ ...                │  │ Acme Corp    ✓   │  ← Current (highlighted)
+└────────────────────┘  │ Other Corp       │
+                        │ ──────────────── │
+                        │ Clear selection  │  ← Returns to personal mode
+                        └──────────────────┘
+```
+
+**States**:
+- **Current org**: Indigo text (`text-indigo-600`) with indigo background (`bg-indigo-50`)
+- **Other orgs**: Gray text, hover highlights
+- **No org selected**: Shows "No organization" in gray
+
+#### Group Switcher (Nested Menu)
+
+Only appears when an organization is selected. Shows all groups you're a member of:
+
+```
+┌────────────────────┐
+│ Group: Dev Team →  │──┬──────────────────┐
+│ ...                │  │ All Groups   ✓   │  ← Aggregate view
+└────────────────────┘  │ ──────────────── │
+                        │ Dev Team         │
+                        │ Marketing        │
+                        │ Sales (default)  │
+                        └──────────────────┘
+```
+
+**States**:
+- **Current group**: Green text (`text-secondary`) with green background (`bg-green-50`)
+- **All Groups**: Special option to view data across all groups
+- **Default group**: Shows "(default)" label
+
+### Responsive Behavior
+
+Currently, the navbar is designed for desktop screens. On smaller screens:
+- Links may overflow horizontally
+- Consider hamburger menu for mobile (future enhancement)
+
+### Context Indicators
+
+The navbar helps users understand their current context:
+
+1. **Active page**: While not explicitly highlighted, users know where they are by URL
+2. **User identity**: Email always visible in top-right
+3. **Organization context**: Shown in dropdown (indigo = active)
+4. **Group context**: Shown in dropdown (green = active)
+
+### Keyboard Navigation
+
+- `Tab` cycles through navbar links
+- `Enter` activates focused link
+- `Esc` closes dropdown menus
+- Arrow keys navigate within dropdowns
+
+### Code Reference
+
+The navbar is defined in `app/templates/base.html:91-235` and uses:
+- **Alpine.js** for dropdown interactivity (`x-data`, `x-show`, `@click`)
+- **Tailwind CSS** for styling
+- **Jinja2** templating for conditional rendering based on auth state
 
 ---
 
