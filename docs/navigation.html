@@ -1,0 +1,1703 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Artemis Navigation Guide</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary: #1a3a4a;
+            --primary-light: #2d5a6e;
+            --secondary: #6b7f3a;
+            --accent: #8b9a5c;
+            --cream: #f5f0e8;
+            --cream-dark: #ebe4d8;
+            --navy: #0f2537;
+            --text-dark: #2c3e50;
+            --text-light: #6c757d;
+            --border: #e0dcd4;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);
+            color: var(--text-dark);
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        header {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 3rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.2);
+            text-align: center;
+        }
+
+        h1 {
+            font-size: 3rem;
+            color: var(--primary);
+            margin-bottom: 0.5rem;
+            font-weight: 700;
+        }
+
+        .subtitle {
+            font-size: 1.25rem;
+            color: var(--text-light);
+            margin-bottom: 1rem;
+        }
+
+        .badge {
+            display: inline-block;
+            background: var(--secondary);
+            color: white;
+            padding: 0.4rem 1rem;
+            border-radius: 20px;
+            font-size: 0.875rem;
+            font-weight: 600;
+            margin: 0.5rem;
+        }
+
+        .badge.version {
+            background: var(--primary);
+        }
+
+        .badge.updated {
+            background: var(--accent);
+        }
+
+        nav {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+            position: sticky;
+            top: 1rem;
+            z-index: 100;
+        }
+
+        nav h3 {
+            color: var(--primary);
+            margin-bottom: 1rem;
+            font-size: 1.125rem;
+        }
+
+        nav ul {
+            list-style: none;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 0.5rem;
+        }
+
+        nav a {
+            display: block;
+            color: var(--text-dark);
+            text-decoration: none;
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            transition: all 0.2s;
+            font-size: 0.95rem;
+        }
+
+        nav a:hover {
+            background: var(--cream);
+            color: var(--primary);
+            transform: translateX(5px);
+        }
+
+        .content {
+            background: white;
+            border-radius: 20px;
+            padding: 3rem;
+            box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.15);
+            margin-bottom: 2rem;
+        }
+
+        h2 {
+            color: var(--primary);
+            font-size: 2rem;
+            margin-top: 2rem;
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 3px solid var(--secondary);
+            font-weight: 700;
+        }
+
+        h3 {
+            color: var(--primary-light);
+            font-size: 1.5rem;
+            margin-top: 2rem;
+            margin-bottom: 1rem;
+            font-weight: 600;
+        }
+
+        h4 {
+            color: var(--secondary);
+            font-size: 1.25rem;
+            margin-top: 1.5rem;
+            margin-bottom: 0.75rem;
+            font-weight: 600;
+        }
+
+        p {
+            margin-bottom: 1rem;
+            color: var(--text-dark);
+        }
+
+        ul, ol {
+            margin-left: 1.5rem;
+            margin-bottom: 1rem;
+        }
+
+        li {
+            margin-bottom: 0.5rem;
+        }
+
+        code {
+            background: var(--cream);
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            font-family: 'Monaco', 'Courier New', monospace;
+            font-size: 0.9em;
+            color: var(--primary);
+        }
+
+        pre {
+            background: var(--navy);
+            color: var(--cream);
+            padding: 1.5rem;
+            border-radius: 12px;
+            overflow-x: auto;
+            margin: 1.5rem 0;
+            box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.3);
+        }
+
+        pre code {
+            background: none;
+            color: inherit;
+            padding: 0;
+        }
+
+        .card {
+            background: linear-gradient(135deg, var(--cream) 0%, white 100%);
+            border: 2px solid var(--border);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin: 1.5rem 0;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+            transition: all 0.3s;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+        }
+
+        .card h4 {
+            margin-top: 0;
+            color: var(--primary);
+        }
+
+        .collapsible {
+            background: var(--cream-dark);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            margin: 1rem 0;
+            overflow: hidden;
+        }
+
+        .collapsible-header {
+            background: var(--cream);
+            padding: 1rem 1.5rem;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-weight: 600;
+            color: var(--primary);
+            transition: background 0.2s;
+        }
+
+        .collapsible-header:hover {
+            background: var(--cream-dark);
+        }
+
+        .collapsible-icon {
+            transition: transform 0.3s;
+            font-size: 1.2rem;
+        }
+
+        .collapsible.open .collapsible-icon {
+            transform: rotate(180deg);
+        }
+
+        .collapsible-content {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease-out;
+            padding: 0 1.5rem;
+        }
+
+        .collapsible.open .collapsible-content {
+            max-height: 5000px;
+            padding: 1.5rem;
+            transition: max-height 0.5s ease-in;
+        }
+
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+            margin: 2rem 0;
+        }
+
+        .feature-card {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);
+            color: white;
+            padding: 2rem;
+            border-radius: 12px;
+            text-align: center;
+            box-shadow: 0 4px 15px rgba(26, 58, 74, 0.3);
+            transition: transform 0.3s;
+        }
+
+        .feature-card:hover {
+            transform: translateY(-8px);
+        }
+
+        .feature-icon {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .feature-card h4 {
+            color: white;
+            margin-bottom: 0.5rem;
+        }
+
+        .feature-card p {
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 0.95rem;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1.5rem 0;
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+        }
+
+        th {
+            background: var(--primary);
+            color: white;
+            padding: 1rem;
+            text-align: left;
+            font-weight: 600;
+        }
+
+        td {
+            padding: 0.875rem 1rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+
+        tr:hover {
+            background: var(--cream);
+        }
+
+        .alert {
+            padding: 1rem 1.5rem;
+            border-radius: 8px;
+            margin: 1.5rem 0;
+            border-left: 4px solid;
+        }
+
+        .alert-success {
+            background: rgba(16, 185, 129, 0.1);
+            border-color: var(--success);
+            color: #065f46;
+        }
+
+        .alert-warning {
+            background: rgba(245, 158, 11, 0.1);
+            border-color: var(--warning);
+            color: #92400e;
+        }
+
+        .alert-danger {
+            background: rgba(239, 68, 68, 0.1);
+            border-color: var(--danger);
+            color: #991b1b;
+        }
+
+        .alert-info {
+            background: rgba(26, 58, 74, 0.1);
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+
+        .flow-step {
+            position: relative;
+            padding-left: 3rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .flow-step::before {
+            content: attr(data-step);
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 2rem;
+            height: 2rem;
+            background: var(--secondary);
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 0.875rem;
+        }
+
+        .flow-step h4 {
+            margin-top: 0;
+        }
+
+        .screenshot-placeholder {
+            background: linear-gradient(135deg, var(--cream) 0%, var(--cream-dark) 100%);
+            border: 2px dashed var(--border);
+            border-radius: 12px;
+            padding: 3rem;
+            text-align: center;
+            margin: 1.5rem 0;
+            color: var(--text-light);
+            font-style: italic;
+        }
+
+        footer {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 2rem;
+            margin-top: 3rem;
+            text-align: center;
+            box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.1);
+        }
+
+        footer p {
+            color: var(--text-light);
+            margin-bottom: 0.5rem;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 0.5rem;
+        }
+
+        .status-healthy {
+            background: var(--success);
+            box-shadow: 0 0 8px var(--success);
+        }
+
+        .status-degraded {
+            background: var(--warning);
+            box-shadow: 0 0 8px var(--warning);
+        }
+
+        .status-unhealthy {
+            background: var(--danger);
+            box-shadow: 0 0 8px var(--danger);
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 1rem;
+            }
+
+            h1 {
+                font-size: 2rem;
+            }
+
+            .subtitle {
+                font-size: 1rem;
+            }
+
+            header {
+                padding: 2rem 1.5rem;
+            }
+
+            .content {
+                padding: 1.5rem;
+            }
+
+            nav ul {
+                grid-template-columns: 1fr;
+            }
+
+            .feature-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .back-to-top {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            background: var(--primary);
+            color: white;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(26, 58, 74, 0.4);
+            transition: all 0.3s;
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .back-to-top.visible {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .back-to-top:hover {
+            background: var(--primary-light);
+            transform: translateY(-5px);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🏹 Artemis Navigation Guide</h1>
+            <p class="subtitle">AI Management Platform - Unified proxy for LLM API calls</p>
+            <div>
+                <span class="badge version">Version 1.0.0</span>
+                <span class="badge">https://artemis.jettaintelligence.com</span>
+                <span class="badge updated">Updated December 2025</span>
+            </div>
+        </header>
+
+        <nav id="toc">
+            <h3>📑 Table of Contents</h3>
+            <ul>
+                <li><a href="#overview">Overview</a></li>
+                <li><a href="#authentication">Authentication & Access</a></li>
+                <li><a href="#navigation">Navigation Structure</a></li>
+                <li><a href="#concepts">Core Concepts</a></li>
+                <li><a href="#pages">Page Reference</a></li>
+                <li><a href="#flows">User Flows</a></li>
+                <li><a href="#tips">Navigation Tips</a></li>
+                <li><a href="#shortcuts">Keyboard Shortcuts</a></li>
+                <li><a href="#troubleshooting">Troubleshooting</a></li>
+            </ul>
+        </nav>
+
+        <div class="content">
+            <section id="overview">
+                <h2>📖 Overview</h2>
+                <p>Artemis is a centralized AI management platform that serves as a unified proxy for all LLM API calls. It provides comprehensive usage tracking, cost analytics, and multi-provider support.</p>
+
+                <div class="feature-grid">
+                    <div class="feature-card">
+                        <div class="feature-icon">📊</div>
+                        <h4>Usage Tracking</h4>
+                        <p>Monitor all API requests across your organization</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">💰</div>
+                        <h4>Cost Analytics</h4>
+                        <p>Real-time cost tracking with detailed breakdowns</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">🔌</div>
+                        <h4>Multi-Provider</h4>
+                        <p>OpenAI, Anthropic, Google, Perplexity, OpenRouter</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">👥</div>
+                        <h4>Team Management</h4>
+                        <p>Hierarchical access control with groups</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">🔐</div>
+                        <h4>Secure Keys</h4>
+                        <p>Encrypted storage and rotation support</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">❤️</div>
+                        <h4>Health Monitoring</h4>
+                        <p>Provider uptime and performance tracking</p>
+                    </div>
+                </div>
+            </section>
+
+            <section id="authentication">
+                <h2>🔐 Authentication & Access</h2>
+
+                <div class="collapsible">
+                    <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                        <span>Production (SSO Enabled)</span>
+                        <span class="collapsible-icon">▼</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <p><strong>URL:</strong> <code>/login</code></p>
+                        <p><strong>Method:</strong> Jetta SSO integration</p>
+                        <ul>
+                            <li>Seamless authentication across all Jetta apps</li>
+                            <li>Shared cookie on <code>.jettaintelligence.com</code> domain</li>
+                            <li>Automatic redirect after login</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="collapsible">
+                    <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                        <span>Development (Localhost Mode)</span>
+                        <span class="collapsible-icon">▼</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <p><strong>Auto-login:</strong> Automatically logs in as test user</p>
+                        <p><strong>Email:</strong> <code>localhost@artemis.local</code></p>
+                        <ul>
+                            <li>No password required when running on localhost</li>
+                            <li>Instant access for development</li>
+                            <li>Simulates full authentication flow</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="alert alert-info">
+                    <strong>First Time?</strong> Register at <code>/register</code> with your email and password. You'll be automatically logged in and redirected to the dashboard.
+                </div>
+            </section>
+
+            <section id="navigation">
+                <h2>🧭 Navigation Structure</h2>
+
+                <h3>Primary Navigation (Top Bar)</h3>
+                <p>The top navigation bar is always visible and provides access to all major sections:</p>
+
+                <div class="card">
+                    <h4>Navigation Items</h4>
+                    <ol>
+                        <li><strong>Artemis</strong> (Logo) - Returns to landing page or dashboard</li>
+                        <li><strong>Dashboard</strong> - Analytics and usage overview</li>
+                        <li><strong>Chat</strong> - Interactive chat interface for testing</li>
+                        <li><strong>Logs</strong> - Detailed request history</li>
+                        <li><strong>Health</strong> - Provider health status monitoring</li>
+                        <li><strong>API Keys</strong> - Manage Artemis API keys</li>
+                        <li><strong>Providers</strong> - Configure provider API keys</li>
+                        <li><strong>Groups</strong> - Team and access management</li>
+                        <li><strong>Guide</strong> - Setup and integration guide</li>
+                        <li><strong>AI Agent</strong> - Agent-specific documentation</li>
+                        <li><strong>API Docs</strong> - API reference documentation</li>
+                    </ol>
+                </div>
+
+                <h3>User Menu (Dropdown)</h3>
+                <p>Click your email in the top-right corner to access:</p>
+                <ul>
+                    <li><strong>Organization Switcher</strong> - Switch between organizations (hover to expand)</li>
+                    <li><strong>Group Switcher</strong> - Switch between groups within org (hover to expand)</li>
+                    <li><strong>Settings</strong> - User preferences and org management</li>
+                    <li><strong>Logout</strong> - End session</li>
+                </ul>
+            </section>
+
+            <section id="concepts">
+                <h2>💡 Core Concepts</h2>
+
+                <h3>Organizational Hierarchy</h3>
+                <pre><code>User
+  ├── Organization A
+  │   ├── Group 1 (Team A)
+  │   │   ├── API Keys
+  │   │   └── Provider Keys
+  │   └── Group 2 (Team B)
+  │       ├── API Keys
+  │       └── Provider Keys
+  └── Organization B
+      └── Group 1 (Default)
+          ├── API Keys
+          └── Provider Keys</code></pre>
+
+                <div class="collapsible">
+                    <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                        <span>Organization</span>
+                        <span class="collapsible-icon">▼</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <p>Top-level entity for your company</p>
+                        <ul>
+                            <li>Contains multiple groups</li>
+                            <li>Owner can manage all settings</li>
+                            <li>Members can be added to specific groups</li>
+                            <li>Billing and usage rolled up to org level</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="collapsible">
+                    <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                        <span>Group</span>
+                        <span class="collapsible-icon">▼</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <p>Sub-team within an organization</p>
+                        <ul>
+                            <li>Isolates API keys and usage</li>
+                            <li>Members have roles: Owner, Admin, Member</li>
+                            <li>Default group created automatically</li>
+                            <li>Perfect for team/department isolation</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="collapsible">
+                    <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                        <span>API Key (Artemis Key)</span>
+                        <span class="collapsible-icon">▼</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <p>Your application uses this to call Artemis</p>
+                        <ul>
+                            <li>Starts with <code>art_</code> prefix</li>
+                            <li>Group-scoped (isolated per team)</li>
+                            <li>Tracks all usage and costs</li>
+                            <li>Can override provider selection</li>
+                            <li>Encrypted storage with one-time reveal</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="collapsible">
+                    <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                        <span>Provider Key (LLM Provider API Key)</span>
+                        <span class="collapsible-icon">▼</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <p>Your actual OpenAI, Anthropic, etc. API key</p>
+                        <ul>
+                            <li>Stored encrypted in database</li>
+                            <li>Group-scoped for security</li>
+                            <li>Can be shared across multiple Artemis keys</li>
+                            <li>Test functionality to verify validity</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="collapsible">
+                    <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                        <span>Usage Log</span>
+                        <span class="collapsible-icon">▼</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <p>Every API request creates a log entry</p>
+                        <ul>
+                            <li>Tracks: model, tokens, cost, latency, provider</li>
+                            <li>Filterable by key, provider, app, model</li>
+                            <li>Retained for historical analysis</li>
+                            <li>Used for cost calculations and analytics</li>
+                        </ul>
+                    </div>
+                </div>
+            </section>
+
+            <section id="pages">
+                <h2>📄 Page Reference</h2>
+
+                <div class="collapsible open">
+                    <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                        <span>📊 Dashboard (<code>/dashboard</code>)</span>
+                        <span class="collapsible-icon">▼</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <h4>Purpose</h4>
+                        <p>Main analytics hub showing usage metrics and costs</p>
+
+                        <h4>Summary Cards (Top Row)</h4>
+                        <ul>
+                            <li><strong>Total Requests</strong> - Count of all API calls</li>
+                            <li><strong>Total Tokens</strong> - Input + output tokens with breakdown</li>
+                            <li><strong>Total Cost</strong> - Dollars spent with input/output split</li>
+                            <li><strong>Avg Latency</strong> - Average response time in milliseconds</li>
+                        </ul>
+
+                        <h4>Charts</h4>
+                        <ul>
+                            <li>Daily Usage - Line chart showing requests over time</li>
+                            <li>Input vs Output Cost - Doughnut chart of cost distribution</li>
+                            <li>Cost by Provider - Breakdown across OpenAI, Anthropic, etc.</li>
+                            <li>Cost by App - Distribution by X-App-Id header</li>
+                        </ul>
+
+                        <h4>Filters (Top Right)</h4>
+                        <ul>
+                            <li>User - Filter by team member (in group/org mode)</li>
+                            <li>API Key - Filter by specific Artemis key</li>
+                            <li>Provider Account - Filter by provider key</li>
+                            <li>Provider - Filter by OpenAI, Anthropic, etc.</li>
+                            <li>App ID - Filter by application</li>
+                            <li>Period - Last 7/14/30 days, QTD, YTD, All Time</li>
+                        </ul>
+
+                        <div class="screenshot-placeholder">
+                            📸 Dashboard with 4 summary cards at top, row of colorful charts below, filters in top-right, and detailed tables showing usage breakdowns by key, provider, and model
+                        </div>
+                    </div>
+                </div>
+
+                <div class="collapsible">
+                    <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                        <span>💬 Chat Interface (<code>/chat</code>)</span>
+                        <span class="collapsible-icon">▼</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <h4>Purpose</h4>
+                        <p>Interactive testing interface for Artemis proxy</p>
+
+                        <h4>Sections</h4>
+                        <ul>
+                            <li><strong>API Key Selector</strong> - Choose which Artemis API key to use</li>
+                            <li><strong>Provider Selector</strong> - Choose provider (only shows providers you have keys for)</li>
+                            <li><strong>Model Selector</strong> - Choose specific model (filtered by provider)</li>
+                            <li><strong>Chat Interface</strong> - Message history with token counts and costs</li>
+                            <li><strong>Settings Panel</strong> - Temperature, max tokens, system prompt</li>
+                        </ul>
+
+                        <h4>Features</h4>
+                        <ul>
+                            <li>Real-time streaming responses</li>
+                            <li>Token usage displayed after each message</li>
+                            <li>Cost calculation shown</li>
+                            <li>Clear chat button</li>
+                            <li>Copy response button</li>
+                        </ul>
+
+                        <div class="screenshot-placeholder">
+                            📸 Chat interface with key/provider/model selectors at top, message history in center showing token counts and costs, input box at bottom, settings panel on right
+                        </div>
+                    </div>
+                </div>
+
+                <div class="collapsible">
+                    <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                        <span>📝 Usage Logs (<code>/logs</code>)</span>
+                        <span class="collapsible-icon">▼</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <h4>Purpose</h4>
+                        <p>Detailed request history with filtering and pagination</p>
+
+                        <h4>Filters</h4>
+                        <ul>
+                            <li>API Key - Filter by specific key</li>
+                            <li>Provider - OpenAI, Anthropic, etc.</li>
+                            <li>App ID - Filter by application</li>
+                            <li>Model - Filter by model name</li>
+                        </ul>
+
+                        <h4>Table Columns</h4>
+                        <ul>
+                            <li>Timestamp - When request was made</li>
+                            <li>API Key - Which key was used</li>
+                            <li>Provider - LLM provider</li>
+                            <li>Model - Specific model</li>
+                            <li>App ID - Application identifier</li>
+                            <li>Tokens - Input/output counts</li>
+                            <li>Cost - Dollar amount</li>
+                            <li>Latency - Response time in ms</li>
+                            <li>Status - Success/error</li>
+                        </ul>
+
+                        <p><strong>Pagination:</strong> 50 logs per page with navigation at bottom</p>
+
+                        <div class="screenshot-placeholder">
+                            📸 Table of API requests with columns for timestamp, key, provider, model, tokens, cost, and latency. Filters at top, pagination at bottom.
+                        </div>
+                    </div>
+                </div>
+
+                <div class="collapsible">
+                    <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                        <span>🔑 API Keys Management (<code>/api-keys</code>)</span>
+                        <span class="collapsible-icon">▼</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <h4>Purpose</h4>
+                        <p>Manage Artemis API keys (what your apps use)</p>
+
+                        <h4>Create New Key</h4>
+                        <ul>
+                            <li>Name input field (must be unique within group)</li>
+                            <li>Create button</li>
+                            <li><strong>Important:</strong> Full key shown ONE TIME ONLY after creation</li>
+                        </ul>
+
+                        <h4>API Keys List</h4>
+                        <p><strong>Columns:</strong></p>
+                        <ul>
+                            <li>Name - Key identifier</li>
+                            <li>Key Prefix - First/last few characters</li>
+                            <li>Group - Which team owns it (in All Groups mode)</li>
+                            <li>Created - Creation date</li>
+                            <li>Last Used - Most recent request</li>
+                            <li>Status - Active or Revoked</li>
+                        </ul>
+
+                        <h4>Actions per Key</h4>
+                        <ul>
+                            <li><strong>Reveal</strong> - Show full key (if encrypted)</li>
+                            <li><strong>Revoke</strong> - Disable key (cannot be undone)</li>
+                            <li><strong>Configure Overrides</strong> - Set provider preferences</li>
+                        </ul>
+
+                        <div class="alert alert-warning">
+                            <strong>Note:</strong> Cannot create keys in "All Groups" mode. Must select a specific group first.
+                        </div>
+
+                        <div class="screenshot-placeholder">
+                            📸 List of API keys with name, prefix, creation date, and action buttons. "Create New Key" form at top. Modal showing newly created key with copy button.
+                        </div>
+                    </div>
+                </div>
+
+                <div class="collapsible">
+                    <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                        <span>🔌 Providers Management (<code>/providers</code>)</span>
+                        <span class="collapsible-icon">▼</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <h4>Purpose</h4>
+                        <p>Configure LLM provider API keys (OpenAI, Anthropic, etc.)</p>
+
+                        <h4>Provider Tabs</h4>
+                        <ul>
+                            <li>OpenAI</li>
+                            <li>Anthropic</li>
+                            <li>Google (Gemini)</li>
+                            <li>Perplexity</li>
+                            <li>OpenRouter</li>
+                        </ul>
+
+                        <h4>For Each Provider</h4>
+                        <p><strong>Provider Accounts:</strong></p>
+                        <ul>
+                            <li>Account Name - Friendly identifier</li>
+                            <li>Model Count - Number of models synced</li>
+                            <li>Status - Active/Inactive</li>
+                            <li>Created - Creation date</li>
+                        </ul>
+
+                        <p><strong>Actions per Account:</strong></p>
+                        <ul>
+                            <li>Add Key - Add a new API key to this account</li>
+                            <li>Sync Models - Fetch latest model list and pricing</li>
+                            <li>Delete - Remove account (if no keys exist)</li>
+                        </ul>
+
+                        <p><strong>Provider Keys List:</strong></p>
+                        <ul>
+                            <li>Name - Key identifier</li>
+                            <li>Account - Which provider account it belongs to</li>
+                            <li>Group - Team ownership</li>
+                            <li>Created - Creation date</li>
+                            <li>Status - Active/Revoked</li>
+                        </ul>
+
+                        <h4>Model Syncing</h4>
+                        <ul>
+                            <li>Fetches available models from provider</li>
+                            <li>Updates pricing information</li>
+                            <li>Shows last sync timestamp</li>
+                            <li>Required for accurate cost calculations</li>
+                        </ul>
+
+                        <div class="screenshot-placeholder">
+                            📸 Tabbed interface showing provider accounts (OpenAI, Anthropic, etc.). Each account has a list of API keys with reveal/test/revoke actions. "Add Account" and "Sync Models" buttons.
+                        </div>
+                    </div>
+                </div>
+
+                <div class="collapsible">
+                    <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                        <span>👥 Groups Management (<code>/groups</code>)</span>
+                        <span class="collapsible-icon">▼</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <h4>Purpose</h4>
+                        <p>Manage teams and access control within organization</p>
+
+                        <h4>Create New Group</h4>
+                        <ul>
+                            <li>Name input</li>
+                            <li>Description textarea (optional)</li>
+                            <li>Only visible to admins/owners</li>
+                        </ul>
+
+                        <h4>For Each Group</h4>
+                        <ul>
+                            <li>Name - Group identifier</li>
+                            <li>Description - Purpose/details</li>
+                            <li>Member Count - Number of members</li>
+                            <li>Default Badge - If set as org default</li>
+                            <li>Your Role - Owner, Admin, or Member</li>
+                        </ul>
+
+                        <h4>Role Permissions</h4>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Role</th>
+                                    <th>Permissions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><strong>Owner</strong></td>
+                                    <td>Full control, add/remove members, change roles, delete group, manage keys</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Admin</strong></td>
+                                    <td>Add/remove members (except owners), manage keys, cannot delete group</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Member</strong></td>
+                                    <td>View resources, use API keys, cannot manage members or keys</td>
+                                </tr>
+                            </tbody>
+                        </table>
+
+                        <div class="screenshot-placeholder">
+                            📸 Card-based layout showing groups with member counts and descriptions. Each card expandable to show member list with roles and management actions.
+                        </div>
+                    </div>
+                </div>
+
+                <div class="collapsible">
+                    <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                        <span>⚙️ Settings (<code>/settings</code>)</span>
+                        <span class="collapsible-icon">▼</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <h4>Purpose</h4>
+                        <p>User preferences and organization management</p>
+
+                        <h4>User Settings</h4>
+                        <ul>
+                            <li>Email - Display only</li>
+                            <li>Display Name - Update name (future)</li>
+                            <li>Preferences - UI settings (future)</li>
+                        </ul>
+
+                        <h4>Organization Management</h4>
+                        <p><strong>Your Organizations:</strong></p>
+                        <ul>
+                            <li>Organization Name</li>
+                            <li>Your Role - Owner or Member</li>
+                            <li>Member Count</li>
+                            <li>Created Date</li>
+                        </ul>
+
+                        <p><strong>Actions per Org:</strong></p>
+                        <ul>
+                            <li>View/Switch - Make it the active org</li>
+                            <li>Leave - Remove yourself (if not owner)</li>
+                        </ul>
+
+                        <h4>Create New Organization</h4>
+                        <ul>
+                            <li>Organization Name input</li>
+                            <li>You become the owner automatically</li>
+                            <li>Default group created automatically</li>
+                        </ul>
+
+                        <div class="screenshot-placeholder">
+                            📸 Settings page with user profile section at top, list of organizations below, and "Create Organization" form.
+                        </div>
+                    </div>
+                </div>
+
+                <div class="collapsible">
+                    <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                        <span>📖 Setup Guide (<code>/guide</code>)</span>
+                        <span class="collapsible-icon">▼</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <h4>Purpose</h4>
+                        <p>Integration instructions and code examples</p>
+
+                        <h4>Quick Start</h4>
+                        <ol>
+                            <li>Create an API key</li>
+                            <li>Add provider keys</li>
+                            <li>Use Artemis proxy in your app</li>
+                        </ol>
+
+                        <h4>Integration Examples</h4>
+                        <p>Code examples for:</p>
+                        <ul>
+                            <li>OpenAI (Python, JavaScript)</li>
+                            <li>Anthropic (Python, JavaScript)</li>
+                            <li>cURL examples</li>
+                            <li>Setting X-App-Id header</li>
+                        </ul>
+
+                        <h4>Best Practices</h4>
+                        <ul>
+                            <li>Key rotation strategy</li>
+                            <li>Error handling</li>
+                            <li>Rate limiting</li>
+                            <li>Cost optimization tips</li>
+                        </ul>
+
+                        <div class="screenshot-placeholder">
+                            📸 Documentation page with code blocks showing integration examples. Copy buttons next to each code snippet.
+                        </div>
+                    </div>
+                </div>
+
+                <div class="collapsible">
+                    <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                        <span>❤️ Health Status (<code>/health-status</code>)</span>
+                        <span class="collapsible-icon">▼</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <h4>Purpose</h4>
+                        <p>Real-time provider availability monitoring</p>
+
+                        <h4>Overall Status Banner</h4>
+                        <ul>
+                            <li><span class="status-indicator status-healthy"></span>All Systems Operational (green)</li>
+                            <li><span class="status-indicator status-degraded"></span>Degraded Performance (yellow)</li>
+                            <li><span class="status-indicator status-unhealthy"></span>Outage Detected (red)</li>
+                        </ul>
+
+                        <h4>Provider Status Cards</h4>
+                        <p>For each provider (OpenAI, Anthropic, Google, etc.):</p>
+                        <ul>
+                            <li>Status Indicator - Green/yellow/red dot</li>
+                            <li>Provider Name</li>
+                            <li>Last Checked - Timestamp of last health check</li>
+                            <li>Response Time - Average latency</li>
+                            <li>Success Rate - Percentage of successful requests</li>
+                            <li>Recent Errors - Count of recent failures</li>
+                        </ul>
+
+                        <p><strong>Auto-Refresh:</strong> Page updates every 30 seconds</p>
+
+                        <div class="screenshot-placeholder">
+                            📸 Status dashboard showing provider health cards with green/yellow/red indicators, response times, and success rates. Overall status banner at top.
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="flows">
+                <h2>🔄 User Flows</h2>
+
+                <div class="collapsible open">
+                    <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                        <span>Flow 1: Getting Started (New User)</span>
+                        <span class="collapsible-icon">▼</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <div class="flow-step" data-step="1">
+                            <h4>Register → <code>/register</code></h4>
+                            <ul>
+                                <li>Enter email and password</li>
+                                <li>Submit form</li>
+                                <li>Auto-redirected to dashboard</li>
+                            </ul>
+                        </div>
+
+                        <div class="flow-step" data-step="2">
+                            <h4>Create Organization → <code>/settings</code></h4>
+                            <ul>
+                                <li>Click "Settings" in nav</li>
+                                <li>Enter organization name</li>
+                                <li>Click "Create Organization"</li>
+                                <li>Default group created automatically</li>
+                            </ul>
+                        </div>
+
+                        <div class="flow-step" data-step="3">
+                            <h4>Add Provider Key → <code>/providers</code></h4>
+                            <ul>
+                                <li>Click "Providers" in nav</li>
+                                <li>Select provider tab (e.g., OpenAI)</li>
+                                <li>Click "Add Account"</li>
+                                <li>Enter account name and click "Create"</li>
+                                <li>Click "Add Key" on new account</li>
+                                <li>Enter key name and paste API key</li>
+                                <li>Click "Save"</li>
+                            </ul>
+                        </div>
+
+                        <div class="flow-step" data-step="4">
+                            <h4>Create API Key → <code>/api-keys</code></h4>
+                            <ul>
+                                <li>Click "API Keys" in nav</li>
+                                <li>Enter key name</li>
+                                <li>Click "Create"</li>
+                                <li><strong>IMPORTANT:</strong> Copy the displayed key (only shown once)</li>
+                            </ul>
+                        </div>
+
+                        <div class="flow-step" data-step="5">
+                            <h4>Test Integration → <code>/chat</code></h4>
+                            <ul>
+                                <li>Click "Chat" in nav</li>
+                                <li>Select your API key</li>
+                                <li>Select provider and model</li>
+                                <li>Send test message</li>
+                                <li>Verify response</li>
+                            </ul>
+                        </div>
+
+                        <div class="flow-step" data-step="6">
+                            <h4>View Usage → <code>/dashboard</code></h4>
+                            <ul>
+                                <li>Click "Dashboard"</li>
+                                <li>See request count, tokens, cost</li>
+                                <li>Check usage by provider</li>
+                            </ul>
+                        </div>
+
+                        <div class="alert alert-success">
+                            <strong>Success!</strong> You're now tracking all AI usage through Artemis!
+                        </div>
+                    </div>
+                </div>
+
+                <div class="collapsible">
+                    <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                        <span>Flow 2: Adding Team Members</span>
+                        <span class="collapsible-icon">▼</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <div class="flow-step" data-step="1">
+                            <h4>Create Group → <code>/groups</code></h4>
+                            <ul>
+                                <li>Ensure organization is selected (top-right menu)</li>
+                                <li>Enter group name and description</li>
+                                <li>Click "Create Group"</li>
+                            </ul>
+                        </div>
+
+                        <div class="flow-step" data-step="2">
+                            <h4>Add Provider Keys to Group</h4>
+                            <ul>
+                                <li>Select group in top-right menu</li>
+                                <li>Go to <code>/providers</code></li>
+                                <li>Create account and add provider keys</li>
+                                <li>Keys are group-scoped automatically</li>
+                            </ul>
+                        </div>
+
+                        <div class="flow-step" data-step="3">
+                            <h4>Invite Team Member</h4>
+                            <ul>
+                                <li>Go to <code>/groups</code></li>
+                                <li>Find your group</li>
+                                <li>Click "Add Member"</li>
+                                <li>Enter member's email (must have Artemis account)</li>
+                                <li>Select role (Member, Admin, Owner)</li>
+                            </ul>
+                        </div>
+
+                        <div class="flow-step" data-step="4">
+                            <h4>Member Switches to Group</h4>
+                            <ul>
+                                <li>Member logs in</li>
+                                <li>Clicks user menu (top-right)</li>
+                                <li>Hovers over organization and selects it</li>
+                                <li>Hovers over group and selects it</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="collapsible">
+                    <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                        <span>Flow 3: Monitoring Costs</span>
+                        <span class="collapsible-icon">▼</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <div class="flow-step" data-step="1">
+                            <h4>Set Time Period → <code>/dashboard</code></h4>
+                            <ul>
+                                <li>Select period filter (7 days, 30 days, QTD, etc.)</li>
+                            </ul>
+                        </div>
+
+                        <div class="flow-step" data-step="2">
+                            <h4>Review Summary Cards</h4>
+                            <ul>
+                                <li>Total requests, tokens, cost, latency</li>
+                                <li>Input/output splits visible</li>
+                            </ul>
+                        </div>
+
+                        <div class="flow-step" data-step="3">
+                            <h4>Analyze Charts</h4>
+                            <ul>
+                                <li>Daily Usage - Spot trends</li>
+                                <li>Cost by Provider - Which provider costs most</li>
+                                <li>Cost by App - Which application uses most</li>
+                            </ul>
+                        </div>
+
+                        <div class="flow-step" data-step="4">
+                            <h4>Drill Down by API Key</h4>
+                            <ul>
+                                <li>Scroll to "Usage by API Key" table</li>
+                                <li>Click on any key to filter entire dashboard</li>
+                            </ul>
+                        </div>
+
+                        <div class="flow-step" data-step="5">
+                            <h4>Check Detailed Logs → <code>/logs</code></h4>
+                            <ul>
+                                <li>Apply filters (key, provider, app, model)</li>
+                                <li>Review individual requests</li>
+                                <li>Identify expensive calls</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="collapsible">
+                    <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                        <span>Flow 4: Switching Between Organizations/Groups</span>
+                        <span class="collapsible-icon">▼</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <h4>Switch Organization</h4>
+                        <ol>
+                            <li>Click your email in top-right corner</li>
+                            <li>Hover over organization name in dropdown</li>
+                            <li>Nested menu appears showing all orgs</li>
+                            <li>Click desired organization</li>
+                            <li>Page refreshes with new context</li>
+                        </ol>
+
+                        <h4>Switch Group (Within Current Org)</h4>
+                        <ol>
+                            <li>Click your email in top-right corner</li>
+                            <li>Hover over "Group:" section in dropdown</li>
+                            <li>Nested menu shows all groups</li>
+                            <li>Click desired group</li>
+                            <li>Dashboard updates to show group data</li>
+                        </ol>
+
+                        <h4>View All Groups</h4>
+                        <ol>
+                            <li>Click your email in top-right corner</li>
+                            <li>Hover over "Group:" section</li>
+                            <li>Click "All Groups"</li>
+                            <li>Dashboard shows aggregate data across all groups</li>
+                            <li>"Usage by Group" table appears</li>
+                        </ol>
+                    </div>
+                </div>
+
+                <div class="collapsible">
+                    <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                        <span>Flow 5: Revoking Compromised Keys</span>
+                        <span class="collapsible-icon">▼</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <h4>If Artemis API Key Compromised</h4>
+                        <div class="flow-step" data-step="1">
+                            <h4>Revoke Immediately → <code>/api-keys</code></h4>
+                            <ul>
+                                <li>Find the compromised key</li>
+                                <li>Click "Revoke" button</li>
+                                <li>Confirm action (cannot be undone)</li>
+                            </ul>
+                        </div>
+
+                        <div class="flow-step" data-step="2">
+                            <h4>Create Replacement</h4>
+                            <ul>
+                                <li>Click "Create New Key"</li>
+                                <li>Use descriptive name (e.g., "Production v2")</li>
+                                <li>Copy new key securely</li>
+                            </ul>
+                        </div>
+
+                        <div class="flow-step" data-step="3">
+                            <h4>Update Applications</h4>
+                            <ul>
+                                <li>Update all apps using old key</li>
+                                <li>Deploy with new key</li>
+                                <li>Monitor <code>/logs</code> for traffic on new key</li>
+                            </ul>
+                        </div>
+
+                        <h4>If Provider Key Compromised</h4>
+                        <div class="flow-step" data-step="1">
+                            <h4>Revoke in Artemis → <code>/providers</code></h4>
+                            <ul>
+                                <li>Find compromised key</li>
+                                <li>Click "Revoke"</li>
+                            </ul>
+                        </div>
+
+                        <div class="flow-step" data-step="2">
+                            <h4>Revoke at Provider</h4>
+                            <ul>
+                                <li>Log into OpenAI/Anthropic/etc dashboard</li>
+                                <li>Revoke key there as well</li>
+                                <li>Generate new key from provider</li>
+                            </ul>
+                        </div>
+
+                        <div class="flow-step" data-step="3">
+                            <h4>Add New Provider Key</h4>
+                            <ul>
+                                <li>Click "Add Key" in Artemis</li>
+                                <li>Paste new provider key</li>
+                                <li>Save and test</li>
+                            </ul>
+                        </div>
+
+                        <div class="alert alert-danger">
+                            <strong>Security Alert!</strong> Always revoke compromised keys at both Artemis AND the provider level for maximum security.
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="tips">
+                <h2>💡 Navigation Tips</h2>
+
+                <div class="card">
+                    <h4>Context Indicators</h4>
+                    <ul>
+                        <li><strong>Active organization</strong> - Highlighted in dropdown (blue text/background)</li>
+                        <li><strong>Active group</strong> - Highlighted in dropdown (green text/background)</li>
+                        <li><strong>"All Groups" mode</strong> - Shows "All Groups" badge, enables group comparison</li>
+                        <li><strong>No org selected</strong> - Dropdown shows "No organization" in gray</li>
+                    </ul>
+                </div>
+
+                <div class="card">
+                    <h4>Efficient Workflows</h4>
+                    <ul>
+                        <li><strong>Use dropdowns for context switching</strong> - Hover instead of clicking for quick preview</li>
+                        <li><strong>Filter dashboards, don't create multiple views</strong> - Use period and provider filters</li>
+                        <li><strong>Click table rows to auto-filter</strong> - One-click drill-down</li>
+                    </ul>
+                </div>
+
+                <div class="card">
+                    <h4>Naming Conventions</h4>
+                    <ul>
+                        <li>API Keys: <code>[Environment]-[App]-[Version]</code> (e.g., "Production-WebApp-v2")</li>
+                        <li>Provider Keys: <code>[Provider]-[Environment]-[Date]</code> (e.g., "OpenAI-Prod-2024Q4")</li>
+                        <li>Groups: <code>[Team/Department]</code> (e.g., "Engineering", "Marketing")</li>
+                        <li>Organizations: <code>[Company Name]</code> (e.g., "AIC Holdings")</li>
+                    </ul>
+                </div>
+            </section>
+
+            <section id="shortcuts">
+                <h2>⌨️ Keyboard Shortcuts</h2>
+
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Shortcut</th>
+                            <th>Action</th>
+                            <th>Context</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>Esc</code></td>
+                            <td>Close any open modal or dropdown</td>
+                            <td>Global</td>
+                        </tr>
+                        <tr>
+                            <td><code>Tab</code></td>
+                            <td>Navigate to next focusable element</td>
+                            <td>Global</td>
+                        </tr>
+                        <tr>
+                            <td><code>Shift + Tab</code></td>
+                            <td>Navigate to previous element</td>
+                            <td>Global</td>
+                        </tr>
+                        <tr>
+                            <td><code>Enter</code></td>
+                            <td>Submit form or click focused button</td>
+                            <td>Global</td>
+                        </tr>
+                        <tr>
+                            <td><code>Ctrl/Cmd + Enter</code></td>
+                            <td>Send message</td>
+                            <td>Chat</td>
+                        </tr>
+                        <tr>
+                            <td><code>Ctrl/Cmd + K</code></td>
+                            <td>Clear chat history</td>
+                            <td>Chat</td>
+                        </tr>
+                        <tr>
+                            <td><code>↑ / ↓</code></td>
+                            <td>Navigate table rows</td>
+                            <td>Tables/Logs</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </section>
+
+            <section id="troubleshooting">
+                <h2>🔧 Troubleshooting</h2>
+
+                <div class="collapsible">
+                    <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                        <span>Error: "Invalid API Key"</span>
+                        <span class="collapsible-icon">▼</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <h4>Possible Causes</h4>
+                        <ul>
+                            <li>Key was revoked</li>
+                            <li>Key prefix incorrect (should start with <code>art_</code>)</li>
+                            <li>Typo in key</li>
+                            <li>Key belongs to different organization/group</li>
+                        </ul>
+                        <h4>Fix</h4>
+                        <ul>
+                            <li>Go to <code>/api-keys</code></li>
+                            <li>Verify key status</li>
+                            <li>Copy key again or create new one</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="collapsible">
+                    <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                        <span>Error: "No provider key found"</span>
+                        <span class="collapsible-icon">▼</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <h4>Possible Causes</h4>
+                        <ul>
+                            <li>No provider key configured for this provider</li>
+                            <li>Provider key was revoked</li>
+                            <li>Group doesn't have access to provider key</li>
+                        </ul>
+                        <h4>Fix</h4>
+                        <ul>
+                            <li>Go to <code>/providers</code></li>
+                            <li>Add provider key for the provider you're calling</li>
+                            <li>Ensure key is in same group as Artemis API key</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="collapsible">
+                    <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                        <span>Cannot Create API Keys</span>
+                        <span class="collapsible-icon">▼</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <h4>Problem</h4>
+                        <p>"Select a group" error appears</p>
+                        <h4>Solution</h4>
+                        <ul>
+                            <li>You're in "All Groups" mode</li>
+                            <li>Click user menu → Group dropdown</li>
+                            <li>Select a specific group</li>
+                            <li>Try creating key again</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="collapsible">
+                    <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                        <span>Empty Dashboard</span>
+                        <span class="collapsible-icon">▼</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <h4>Problem</h4>
+                        <p>No data showing despite making requests</p>
+                        <h4>Solution</h4>
+                        <ol>
+                            <li>Check you're viewing correct organization/group</li>
+                            <li>Verify API key was used in requests</li>
+                            <li>Check time period filter (might be too narrow)</li>
+                            <li>Review logs to confirm requests were received</li>
+                        </ol>
+                    </div>
+                </div>
+
+                <div class="collapsible">
+                    <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                        <span>Dashboard Not Updating</span>
+                        <span class="collapsible-icon">▼</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <h4>Possible Causes</h4>
+                        <ul>
+                            <li>Time period filter too narrow</li>
+                            <li>Wrong organization/group selected</li>
+                            <li>Browser cache</li>
+                        </ul>
+                        <h4>Fix</h4>
+                        <ul>
+                            <li>Change period to "Last 30 days"</li>
+                            <li>Verify org/group in top-right dropdown</li>
+                            <li>Hard refresh (Ctrl+Shift+R or Cmd+Shift+R)</li>
+                        </ul>
+                    </div>
+                </div>
+            </section>
+
+            <section id="glossary">
+                <h2>📚 Glossary</h2>
+
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Term</th>
+                            <th>Definition</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>Artemis API Key</strong></td>
+                            <td>The API key your application uses to call Artemis (starts with <code>art_</code>)</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Provider Key</strong></td>
+                            <td>Your actual API key from OpenAI, Anthropic, etc., stored in Artemis</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Group</strong></td>
+                            <td>Team or sub-organization with isolated keys and usage</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Organization</strong></td>
+                            <td>Top-level entity representing your company</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Token</strong></td>
+                            <td>Unit of text processing (roughly 4 characters or 0.75 words)</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Latency</strong></td>
+                            <td>Time from request to response in milliseconds</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Input Tokens</strong></td>
+                            <td>Tokens in your prompt/request</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Output Tokens</strong></td>
+                            <td>Tokens in the model's response</td>
+                        </tr>
+                        <tr>
+                            <td><strong>X-App-Id</strong></td>
+                            <td>HTTP header to identify which application is making the request</td>
+                        </tr>
+                        <tr>
+                            <td><strong>QTD</strong></td>
+                            <td>Quarter to Date (current quarter's data)</td>
+                        </tr>
+                        <tr>
+                            <td><strong>YTD</strong></td>
+                            <td>Year to Date (current year's data)</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </section>
+        </div>
+
+        <footer>
+            <h3 style="color: var(--primary); margin-bottom: 1rem;">Built by AIC Holdings</h3>
+            <p>Last Updated: December 12, 2025</p>
+            <p>Document Version: 1.0.0 | Artemis Version: 1.0.0</p>
+        </footer>
+    </div>
+
+    <div class="back-to-top" id="backToTop" onclick="scrollToTop()">
+        ↑
+    </div>
+
+    <script>
+        // Collapsible functionality
+        function toggleCollapsible(header) {
+            const collapsible = header.parentElement;
+            collapsible.classList.toggle('open');
+        }
+
+        // Back to top button
+        window.addEventListener('scroll', function() {
+            const backToTop = document.getElementById('backToTop');
+            if (window.pageYOffset > 300) {
+                backToTop.classList.add('visible');
+            } else {
+                backToTop.classList.remove('visible');
+            }
+        });
+
+        function scrollToTop() {
+            window.scrollTo({
+                top: 0,
+                behavior: 'smooth'
+            });
+        }
+
+        // Smooth scroll for anchor links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                }
+            });
+        });
+    </script>
+</body>
+</html>
