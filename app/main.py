@@ -74,7 +74,15 @@ app.include_router(proxy_routes.router, tags=["proxy"])
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""
-    return {"status": "healthy", "service": "artemis"}
+    return {
+        "status": "healthy",
+        "service": "artemis",
+        "version": "1.0.0",
+        "auth": {
+            "provider": "custom-jwt",
+            "sso_enabled": False
+        }
+    }
 
 
 @app.get("/test-error")
