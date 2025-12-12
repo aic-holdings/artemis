@@ -502,3 +502,92 @@ async def sso_status(request: Request, db: AsyncSession = Depends(get_db)):
         "sso_enabled": settings.SSO_ENABLED,
         "login_url": f"/sso/login" if settings.SSO_ENABLED else "/login",
     }
+
+
+@router.post("/admin/merge-user")
+async def admin_merge_user(
+    request: Request,
+    old_email: str = Form(...),
+    new_email: str = Form(...),
+    secret: str = Form(...),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    One-time admin endpoint to merge user accounts.
+    Transfers all data from old_email user to new_email user.
+    Protected by a secret token.
+    """
+    # Simple secret protection - this is a one-time migration
+    if secret != "artemis-merge-2024-dshanklin":
+        raise HTTPException(status_code=403, detail="Invalid secret")
+
+    # Find both users
+    old_result = await db.execute(select(User).where(User.email == old_email))
+    old_user = old_result.scalar_one_or_none()
+
+    new_result = await db.execute(select(User).where(User.email == new_email))
+    new_user = new_result.scalar_one_or_none()
+
+    if not old_user:
+        return {"error": f"Old user {old_email} not found"}
+    if not new_user:
+        return {"error": f"New user {new_email} not found"}
+
+    old_id = old_user.id
+    new_id = new_user.id
+    changes = []
+
+    # Transfer organization ownership
+    from app.models import Organization, OrganizationMember, Group, GroupMember, APIKey, ProviderKey
+
+    # Organizations owned by old user
+    orgs = await db.execute(select(Organization).where(Organization.owner_id == old_id))
+    for org in orgs.scalars().all():
+        org.owner_id = new_id
+        changes.append(f"Transferred org ownership: {org.name}")
+
+    # Organization memberships
+    memberships = await db.execute(select(OrganizationMember).where(OrganizationMember.user_id == old_id))
+    for mem in memberships.scalars().all():
+        mem.user_id = new_id
+        mem.email = new_email
+        changes.append(f"Transferred org membership: {mem.organization_id}")
+
+    # Group memberships
+    group_mems = await db.execute(select(GroupMember).where(GroupMember.user_id == old_id))
+    for gm in group_mems.scalars().all():
+        gm.user_id = new_id
+        changes.append(f"Transferred group membership: {gm.group_id}")
+
+    # Groups created by old user
+    groups = await db.execute(select(Group).where(Group.created_by_id == old_id))
+    for g in groups.scalars().all():
+        g.created_by_id = new_id
+        changes.append(f"Transferred group creator: {g.name}")
+
+    # API Keys
+    api_keys = await db.execute(select(APIKey).where(APIKey.user_id == old_id))
+    for key in api_keys.scalars().all():
+        key.user_id = new_id
+        changes.append(f"Transferred API key: {key.name}")
+
+    # Provider Keys
+    provider_keys = await db.execute(select(ProviderKey).where(ProviderKey.user_id == old_id))
+    for pk in provider_keys.scalars().all():
+        pk.user_id = new_id
+        changes.append(f"Transferred provider key: {pk.name}")
+
+    # Transfer settings from old user to new user
+    if old_user.settings:
+        new_user.settings = {**(new_user.settings or {}), **old_user.settings}
+        changes.append("Transferred user settings")
+
+    # Commit changes
+    await db.commit()
+
+    return {
+        "success": True,
+        "old_user": old_email,
+        "new_user": new_email,
+        "changes": changes,
+    }
