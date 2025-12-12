@@ -504,6 +504,26 @@ async def sso_status(request: Request, db: AsyncSession = Depends(get_db)):
     }
 
 
+@router.get("/admin/list-users")
+async def admin_list_users(
+    secret: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """List all users - temporary admin endpoint."""
+    if secret != "artemis-merge-2024-dshanklin":
+        raise HTTPException(status_code=403, detail="Invalid secret")
+
+    result = await db.execute(select(User))
+    users = result.scalars().all()
+
+    return {
+        "users": [
+            {"id": u.id, "email": u.email, "created_at": str(u.created_at)}
+            for u in users
+        ]
+    }
+
+
 @router.post("/admin/merge-user")
 async def admin_merge_user(
     request: Request,
