@@ -208,7 +208,7 @@ async def delete_group(
 async def add_member(
     group_id: str,
     request: Request,
-    email: str = Form(...),
+    user_id: str = Form(...),
     role: str = Form("member"),
     db: AsyncSession = Depends(get_db),
 ):
@@ -217,14 +217,17 @@ async def add_member(
     if not ctx:
         return RedirectResponse(url="/login", status_code=303)
 
+    if not user_id or not user_id.strip():
+        return RedirectResponse(url="/groups?error=user_not_found", status_code=303)
+
     group_member_service = GroupMemberService(db)
 
     # Verify user can manage members
     if not await group_member_service.can_manage_members(group_id, ctx.user.id):
         return RedirectResponse(url="/groups?error=no_permission", status_code=303)
 
-    # Find user by email
-    result = await db.execute(select(User).where(User.email == email.strip().lower()))
+    # Find user by ID
+    result = await db.execute(select(User).where(User.id == user_id.strip()))
     target_user = result.scalar_one_or_none()
 
     if not target_user:

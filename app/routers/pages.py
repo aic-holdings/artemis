@@ -150,7 +150,7 @@ async def create_org(request: Request, db: AsyncSession = Depends(get_db)):
 @router.post("/org/members")
 async def add_org_member(
     request: Request,
-    email: str = Form(...),
+    user_id: str = Form(...),
     role: str = Form("member"),
     db: AsyncSession = Depends(get_db),
 ):
@@ -159,6 +159,9 @@ async def add_org_member(
 
     if not ctx.active_org:
         return RedirectResponse(url="/settings?error=No+organization+selected", status_code=303)
+
+    if not user_id or not user_id.strip():
+        return RedirectResponse(url="/settings?error=Please+select+a+user", status_code=303)
 
     # Check if user can manage members (must be owner or admin)
     user_membership = await db.execute(
@@ -177,8 +180,8 @@ async def add_org_member(
     if role in ("owner", "admin") and user_member.role != "owner":
         return RedirectResponse(url="/settings?error=Only+owners+can+add+admins", status_code=303)
 
-    # Find the user by email
-    result = await db.execute(select(User).where(User.email == email.strip().lower()))
+    # Find the user by ID
+    result = await db.execute(select(User).where(User.id == user_id.strip()))
     target_user = result.scalar_one_or_none()
 
     if not target_user:
@@ -268,6 +271,51 @@ async def remove_org_member(
     await db.commit()
 
     return RedirectResponse(url="/settings", status_code=303)
+
+
+# =============================================================================
+# User Search API (for autocomplete)
+# =============================================================================
+
+
+@router.get("/api/users/search")
+async def search_users(
+    request: Request,
+    q: str = "",
+    limit: int = 10,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Search users by email or name for autocomplete.
+    Returns users that match the query (case-insensitive).
+    """
+    ctx = await get_current_user(request, db)
+    if not ctx:
+        return JSONResponse({"error": "Not authenticated"}, status_code=401)
+
+    query = q.strip().lower()
+    if len(query) < 2:
+        return JSONResponse({"users": []})
+
+    # Search users by email (case-insensitive, partial match)
+    result = await db.execute(
+        select(User)
+        .where(User.email.ilike(f"%{query}%"))
+        .order_by(User.email)
+        .limit(limit)
+    )
+    users = list(result.scalars().all())
+
+    return JSONResponse({
+        "users": [
+            {
+                "id": user.id,
+                "email": user.email,
+                "initials": user.email[0].upper() if user.email else "?",
+            }
+            for user in users
+        ]
+    })
 
 
 # =============================================================================
