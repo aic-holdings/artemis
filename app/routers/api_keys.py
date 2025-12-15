@@ -113,11 +113,17 @@ async def create_api_key(
     api_key_service = APIKeyService(db)
 
     # Normalize empty name to "Default"
-    name = name.strip() or "Default"
+    original_name = name.strip()
+    name = original_name or "Default"
 
     # Check for duplicate name (group-scoped)
     if await api_key_service.name_exists(user.id, name, ctx.active_group_id):
-        # Name already exists - show error
+        # Name already exists - show error with helpful message
+        if not original_name:
+            error_msg = "A 'Default' key already exists. Please enter a unique name for your new key."
+        else:
+            error_msg = f"A key named '{name}' already exists. Please choose a different name."
+
         if ctx.active_group_id:
             api_keys = await api_key_service.get_all_for_group(ctx.active_group_id)
         else:
@@ -138,7 +144,7 @@ async def create_api_key(
                 "organizations": organizations,
                 "groups": groups,
                 "api_keys": api_keys,
-                "error": f"A key named '{name}' already exists. Please choose a different name.",
+                "error": error_msg,
                 "providers": PROVIDERS,
                 "provider_keys": {},
             },
