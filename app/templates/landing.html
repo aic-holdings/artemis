@@ -52,6 +52,33 @@
     .glow-subtle {
         box-shadow: 0 0 60px -20px rgba(107, 127, 58, 0.3);
     }
+    /* Chart animations */
+    .chart-bar {
+        transform-origin: bottom;
+        animation: growUp 1s ease-out forwards;
+    }
+    @keyframes growUp {
+        from { transform: scaleY(0); }
+        to { transform: scaleY(1); }
+    }
+    .chart-line {
+        stroke-dasharray: 1000;
+        stroke-dashoffset: 1000;
+        animation: drawLine 2s ease-out forwards;
+    }
+    @keyframes drawLine {
+        to { stroke-dashoffset: 0; }
+    }
+    .donut-segment {
+        transform-origin: center;
+        animation: donutGrow 1s ease-out forwards;
+    }
+    @keyframes donutGrow {
+        from { stroke-dasharray: 0 100; }
+    }
+    .stat-number {
+        animation: countUp 1s ease-out forwards;
+    }
 </style>
 
 <!-- Hero Section -->
@@ -175,6 +202,173 @@
                 </div>
             </div>
             {% endfor %}
+        </div>
+    </div>
+</section>
+
+<!-- Analytics Preview -->
+<section class="py-32 bg-gradient-to-b from-white to-cream/30">
+    <div class="max-w-6xl mx-auto px-6">
+        <div class="text-center mb-16">
+            <h2 class="text-4xl font-bold text-primary mb-4">Real-time analytics</h2>
+            <p class="text-xl text-primary/60 max-w-2xl mx-auto">See exactly where your AI spend goes. Track usage trends, compare models, optimize costs.</p>
+        </div>
+
+        <div class="grid lg:grid-cols-3 gap-8">
+            <!-- Usage Over Time Chart -->
+            <div class="lg:col-span-2 glass-card rounded-2xl p-8 shadow-soft">
+                <div class="flex items-center justify-between mb-6">
+                    <div>
+                        <h4 class="font-semibold text-primary">Usage This Week</h4>
+                        <p class="text-sm text-primary/50">Tokens processed per day</p>
+                    </div>
+                    <div class="flex items-center gap-2 text-sm">
+                        <span class="w-3 h-3 rounded-full bg-secondary"></span>
+                        <span class="text-primary/60">Total: 14.2M tokens</span>
+                    </div>
+                </div>
+                <div class="relative h-48">
+                    <!-- Y-axis labels -->
+                    <div class="absolute left-0 top-0 bottom-8 w-12 flex flex-col justify-between text-xs text-primary/40">
+                        <span>3M</span>
+                        <span>2M</span>
+                        <span>1M</span>
+                        <span>0</span>
+                    </div>
+                    <!-- Chart area -->
+                    <div class="ml-14 h-full">
+                        <svg class="w-full h-40" viewBox="0 0 700 160" preserveAspectRatio="none">
+                            <!-- Grid lines -->
+                            <line x1="0" y1="40" x2="700" y2="40" stroke="rgba(26,58,74,0.08)" stroke-width="1"/>
+                            <line x1="0" y1="80" x2="700" y2="80" stroke="rgba(26,58,74,0.08)" stroke-width="1"/>
+                            <line x1="0" y1="120" x2="700" y2="120" stroke="rgba(26,58,74,0.08)" stroke-width="1"/>
+                            <!-- Area fill -->
+                            <path d="M0,120 L100,100 L200,80 L300,90 L400,60 L500,40 L600,50 L700,30 L700,160 L0,160 Z"
+                                  fill="url(#areaGradient)" opacity="0.3"/>
+                            <!-- Line -->
+                            <path d="M0,120 L100,100 L200,80 L300,90 L400,60 L500,40 L600,50 L700,30"
+                                  fill="none" stroke="#6b7f3a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="chart-line"/>
+                            <!-- Data points -->
+                            <circle cx="0" cy="120" r="4" fill="#6b7f3a"/>
+                            <circle cx="100" cy="100" r="4" fill="#6b7f3a"/>
+                            <circle cx="200" cy="80" r="4" fill="#6b7f3a"/>
+                            <circle cx="300" cy="90" r="4" fill="#6b7f3a"/>
+                            <circle cx="400" cy="60" r="4" fill="#6b7f3a"/>
+                            <circle cx="500" cy="40" r="4" fill="#6b7f3a"/>
+                            <circle cx="600" cy="50" r="4" fill="#6b7f3a"/>
+                            <circle cx="700" cy="30" r="5" fill="#6b7f3a" stroke="white" stroke-width="2"/>
+                            <defs>
+                                <linearGradient id="areaGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                                    <stop offset="0%" stop-color="#6b7f3a" stop-opacity="0.4"/>
+                                    <stop offset="100%" stop-color="#6b7f3a" stop-opacity="0"/>
+                                </linearGradient>
+                            </defs>
+                        </svg>
+                        <!-- X-axis labels -->
+                        <div class="flex justify-between text-xs text-primary/40 mt-2">
+                            <span>Mon</span>
+                            <span>Tue</span>
+                            <span>Wed</span>
+                            <span>Thu</span>
+                            <span>Fri</span>
+                            <span>Sat</span>
+                            <span>Sun</span>
+                            <span class="font-medium text-primary/60">Today</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Provider Breakdown -->
+            <div class="glass-card rounded-2xl p-8 shadow-soft">
+                <div class="mb-6">
+                    <h4 class="font-semibold text-primary">By Provider</h4>
+                    <p class="text-sm text-primary/50">Cost distribution</p>
+                </div>
+                <div class="flex items-center justify-center mb-6">
+                    <svg class="w-40 h-40" viewBox="0 0 36 36">
+                        <!-- Background circle -->
+                        <circle cx="18" cy="18" r="15.5" fill="none" stroke="rgba(26,58,74,0.08)" stroke-width="5"/>
+                        <!-- OpenAI - 45% -->
+                        <circle cx="18" cy="18" r="15.5" fill="none" stroke="#0ea5e9" stroke-width="5"
+                                stroke-dasharray="45 55" stroke-dashoffset="25" class="donut-segment"/>
+                        <!-- Anthropic - 35% -->
+                        <circle cx="18" cy="18" r="15.5" fill="none" stroke="#f97316" stroke-width="5"
+                                stroke-dasharray="35 65" stroke-dashoffset="-20" class="donut-segment" style="animation-delay: 0.2s"/>
+                        <!-- Google - 15% -->
+                        <circle cx="18" cy="18" r="15.5" fill="none" stroke="#22c55e" stroke-width="5"
+                                stroke-dasharray="15 85" stroke-dashoffset="-55" class="donut-segment" style="animation-delay: 0.4s"/>
+                        <!-- Other - 5% -->
+                        <circle cx="18" cy="18" r="15.5" fill="none" stroke="#8b5cf6" stroke-width="5"
+                                stroke-dasharray="5 95" stroke-dashoffset="-70" class="donut-segment" style="animation-delay: 0.6s"/>
+                        <!-- Center text -->
+                        <text x="18" y="17" text-anchor="middle" class="text-[6px] font-bold fill-primary">$847</text>
+                        <text x="18" y="22" text-anchor="middle" class="text-[3px] fill-primary/50">this week</text>
+                    </svg>
+                </div>
+                <div class="space-y-3">
+                    <div class="flex items-center justify-between text-sm">
+                        <div class="flex items-center gap-2">
+                            <span class="w-3 h-3 rounded-full bg-sky-500"></span>
+                            <span class="text-primary/70">OpenAI</span>
+                        </div>
+                        <span class="font-medium text-primary">$381</span>
+                    </div>
+                    <div class="flex items-center justify-between text-sm">
+                        <div class="flex items-center gap-2">
+                            <span class="w-3 h-3 rounded-full bg-orange-500"></span>
+                            <span class="text-primary/70">Anthropic</span>
+                        </div>
+                        <span class="font-medium text-primary">$297</span>
+                    </div>
+                    <div class="flex items-center justify-between text-sm">
+                        <div class="flex items-center gap-2">
+                            <span class="w-3 h-3 rounded-full bg-green-500"></span>
+                            <span class="text-primary/70">Google</span>
+                        </div>
+                        <span class="font-medium text-primary">$127</span>
+                    </div>
+                    <div class="flex items-center justify-between text-sm">
+                        <div class="flex items-center gap-2">
+                            <span class="w-3 h-3 rounded-full bg-violet-500"></span>
+                            <span class="text-primary/70">Other</span>
+                        </div>
+                        <span class="font-medium text-primary">$42</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Model Usage Bar Chart -->
+        <div class="mt-8 glass-card rounded-2xl p-8 shadow-soft">
+            <div class="flex items-center justify-between mb-8">
+                <div>
+                    <h4 class="font-semibold text-primary">Top Models</h4>
+                    <p class="text-sm text-primary/50">Requests by model this week</p>
+                </div>
+                <div class="text-sm text-primary/60">5,847 total requests</div>
+            </div>
+            <div class="space-y-4">
+                {% set models = [
+                    ('gpt-4o', 2340, 40, '#0ea5e9'),
+                    ('claude-3.5-sonnet', 1876, 32, '#f97316'),
+                    ('gpt-4o-mini', 892, 15, '#06b6d4'),
+                    ('claude-3-haiku', 456, 8, '#fb923c'),
+                    ('gemini-1.5-pro', 283, 5, '#22c55e')
+                ] %}
+                {% for model, requests, percent, color in models %}
+                <div class="flex items-center gap-4">
+                    <div class="w-32 text-sm text-primary/70 font-medium truncate">{{ model }}</div>
+                    <div class="flex-1 h-8 bg-primary/5 rounded-lg overflow-hidden">
+                        <div class="h-full rounded-lg chart-bar" style="width: {{ percent }}%; background: {{ color }}; animation-delay: {{ loop.index * 0.1 }}s"></div>
+                    </div>
+                    <div class="w-20 text-right">
+                        <span class="text-sm font-semibold text-primary">{{ '{:,}'.format(requests) }}</span>
+                        <span class="text-xs text-primary/40 ml-1">{{ percent }}%</span>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
         </div>
     </div>
 </section>
