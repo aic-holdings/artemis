@@ -2,21 +2,27 @@
 
 ## CRITICAL RULES - DO NOT VIOLATE
 
-1. **NEVER DELETE artemis.db** - The database contains user data, API keys, and configuration. Do not run `rm artemis.db` or any command that removes the database file.
-2. **For testing, use separate test databases** (e.g., `test.db` with `DATABASE_URL=sqlite+aiosqlite:///./test.db`)
-3. The app auto-creates tables on startup, so deleting the DB is never necessary
+1. **NEVER delete or modify production data** without explicit user confirmation
+2. **Production uses PostgreSQL** on Coolify (`artemis-db` service) - not local SQLite
+3. The app auto-creates tables on startup via Alembic migrations
 
-## Development Server
+## Environments
 
-**IMPORTANT**: Always use port 8767 for the development server.
+### Production
+- **URL**: https://artemis.jettaintelligence.com
+- **Database**: PostgreSQL on Coolify (internal hostname: `wkcskwwo8skoo0g00s080koo`)
+- **Deployed via**: Coolify (app uuid: `n4kg4cc44cwkc8gcwws8wkkw`)
 
+### Local Development
 ```bash
-# Start dev server
+# Start dev server on port 8767
 source venv/bin/activate && LOCALHOST_MODE=true uvicorn app.main:app --reload --port 8767
 
 # Or use the start script
 ./start.sh
 ```
+
+**Note**: Local dev can use SQLite (`artemis.db`) or PostgreSQL - check `.env` for `DATABASE_URL`.
 
 ## Project Overview
 
@@ -25,7 +31,7 @@ Artemis is an AI Management Platform - a unified proxy for LLM API calls with us
 ### Key Architecture
 
 - **FastAPI** backend with async SQLAlchemy
-- **SQLite** database (artemis.db)
+- **PostgreSQL** database (production) / SQLite (local dev optional)
 - **Jinja2** templates with Tailwind CSS
 - **Organization -> Group -> Keys** hierarchy
 
