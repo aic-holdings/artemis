@@ -63,6 +63,8 @@ async def get_or_create_sso_user(sso_user: dict, db: AsyncSession) -> User:
     """
     Get or create a local Artemis user from Jetta SSO user info.
 
+    Uses supabase_id (stable) as primary lookup, with email as fallback for migration.
+
     Args:
         sso_user: User dict from Jetta SSO containing id, email, display_name, etc.
         db: Database session
@@ -70,26 +72,48 @@ async def get_or_create_sso_user(sso_user: dict, db: AsyncSession) -> User:
     Returns:
         Local Artemis User object
     """
+    supabase_id = sso_user.get("id")  # Stable Supabase UUID
     email = sso_user.get("email")
+
     if not email:
         raise ValueError("SSO user missing email")
 
-    # Look up existing user by email
-    result = await db.execute(select(User).where(User.email == email))
-    user = result.scalar_one_or_none()
+    user = None
+
+    # Primary lookup: by supabase_id (stable identifier)
+    if supabase_id:
+        result = await db.execute(select(User).where(User.supabase_id == supabase_id))
+        user = result.scalar_one_or_none()
+
+    # Fallback: by email (for users created before supabase_id was added)
+    if not user:
+        result = await db.execute(select(User).where(User.email == email))
+        user = result.scalar_one_or_none()
+
+        # Migration: if found by email but missing supabase_id, add it
+        if user and supabase_id and not user.supabase_id:
+            user.supabase_id = supabase_id
+            await db.commit()
+            print(f"Migrated user {email}: added supabase_id {supabase_id}")
 
     if not user:
         # Create new user from SSO data
-        # Use a random password hash since SSO users don't use local passwords
         import secrets
         user = User(
+            supabase_id=supabase_id,
             email=email,
             password_hash=hash_password(secrets.token_urlsafe(32)),
         )
         db.add(user)
         await db.commit()
         await db.refresh(user)
-        print(f"Created new Artemis user from SSO: {email}")
+        print(f"Created new Artemis user from SSO: {email} (supabase_id: {supabase_id})")
+    elif user.email != email:
+        # User found by supabase_id but email changed - update it
+        old_email = user.email
+        user.email = email
+        await db.commit()
+        print(f"Updated user email: {old_email} -> {email} (supabase_id: {supabase_id})")
 
     return user
 

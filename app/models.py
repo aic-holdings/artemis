@@ -33,6 +33,7 @@ class User(Base):
     __tablename__ = "users"
 
     id = Column(String, primary_key=True, default=generate_uuid)
+    supabase_id = Column(String, unique=True, nullable=True, index=True)  # Stable ID from Jetta SSO
     email = Column(String, unique=True, nullable=False, index=True)
     password_hash = Column(String, nullable=False)
     tier = Column(String, default="free")  # free, pro, enterprise
