@@ -47,24 +47,20 @@ async def landing(request: Request, db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/login")
-async def login_page(request: Request, error: str = None):
-    """Login page - redirects to dashboard in localhost mode."""
+async def login_page(request: Request, redirect_uri: str = "/dashboard"):
+    """Login - redirects to Jetta SSO."""
     from app.config import settings
+    from app.jetta_sso import get_sso_client
+
+    # In localhost mode, skip SSO
     if settings.LOCALHOST_MODE and is_localhost_request(request):
         return RedirectResponse(url="/dashboard", status_code=303)
-    return templates.TemplateResponse(request, "login.html", {
-        "error": error,
-        "sso_enabled": settings.SSO_ENABLED,
-    })
 
-
-@router.get("/register")
-async def register_page(request: Request, error: str = None):
-    """Register page - redirects to dashboard in localhost mode."""
-    from app.config import settings
-    if settings.LOCALHOST_MODE and is_localhost_request(request):
-        return RedirectResponse(url="/dashboard", status_code=303)
-    return templates.TemplateResponse(request, "register.html", {"error": error})
+    # Redirect to Jetta SSO
+    callback_url = f"{settings.ARTEMIS_URL}/sso/callback?redirect_uri={redirect_uri}"
+    sso_client = get_sso_client()
+    login_url = sso_client.login_url(redirect_uri=callback_url)
+    return RedirectResponse(url=login_url, status_code=302)
 
 
 @router.get("/settings")

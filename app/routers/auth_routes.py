@@ -295,33 +295,6 @@ async def register(
     return response
 
 
-@router.post("/login")
-async def login(
-    request: Request,
-    email: str = Form(...),
-    password: str = Form(...),
-    db: AsyncSession = Depends(get_db),
-):
-    """Login user."""
-    result = await db.execute(select(User).where(User.email == email))
-    user = result.scalar_one_or_none()
-
-    if not user or not verify_password(password, user.password_hash):
-        return RedirectResponse(url="/login?error=invalid", status_code=303)
-
-    # Create session token
-    token = create_access_token({"sub": user.id})
-    response = RedirectResponse(url="/dashboard", status_code=303)
-    response.set_cookie(
-        key="session",
-        value=token,
-        httponly=True,
-        max_age=settings.JWT_EXPIRATION_HOURS * 3600,
-        samesite="lax",
-    )
-    return response
-
-
 @router.get("/logout")
 async def logout():
     """Logout user - clears local session and optionally SSO session."""
@@ -448,25 +421,6 @@ async def clear_group(request: Request, db: AsyncSession = Depends(get_db)):
 # =============================================================================
 # Jetta SSO Routes
 # =============================================================================
-
-@router.get("/sso/login")
-async def sso_login(redirect_uri: str = "/dashboard"):
-    """
-    Redirect to Jetta SSO login page.
-
-    For popup flow: Opens in popup, redirects to /sso/callback after login.
-    """
-    if not settings.SSO_ENABLED:
-        return RedirectResponse(url="/login?error=sso_disabled", status_code=303)
-
-    # Build the callback URL that Jetta SSO will redirect to after login
-    callback_url = f"{settings.ARTEMIS_URL}/sso/callback?redirect_uri={redirect_uri}"
-
-    # Redirect to Jetta SSO login with our callback URL
-    sso_client = get_sso_client()
-    login_url = sso_client.login_url(redirect_uri=callback_url)
-    return RedirectResponse(url=login_url, status_code=302)
-
 
 @router.get("/sso/callback")
 async def sso_callback(request: Request, redirect_uri: str = "/dashboard"):
