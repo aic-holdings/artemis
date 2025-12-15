@@ -48,7 +48,7 @@ class JettaSSO:
 
     def logout_url(self, redirect_uri: str = None) -> str:
         """Get the URL to redirect users to for SSO logout."""
-        url = f"{self.sso_url}/api/auth/logout"
+        url = f"{self.sso_url}/logout"
         if redirect_uri:
             url += f"?redirect_uri={redirect_uri}"
         return url
