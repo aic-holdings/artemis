@@ -65,18 +65,20 @@ class APIKeyService:
     ) -> bool:
         """Check if an active API key with this name already exists.
 
-        If group_id is provided, checks within that group's scope.
-        Otherwise checks for user's personal keys (no group).
+        For group keys: checks if ANY active key in the group has this name
+        (constraint is group-scoped, not user-scoped).
+        For personal keys: checks user's own personal keys (no group).
         """
         query = select(APIKey).where(
-            APIKey.user_id == user_id,
             APIKey.name == name,
             APIKey.revoked_at.is_(None)
         )
         if group_id:
+            # Group-scoped: check for any key in the group with this name
             query = query.where(APIKey.group_id == group_id)
         else:
-            query = query.where(APIKey.group_id.is_(None))
+            # Personal keys: check user's own keys with no group
+            query = query.where(APIKey.user_id == user_id, APIKey.group_id.is_(None))
         result = await self.db.execute(query)
         return result.scalar_one_or_none() is not None
 
