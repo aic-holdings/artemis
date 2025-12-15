@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.database import get_db
-from app.models import User
+from app.models import User, Group, OrganizationMember, utc_now
 from app.routers.auth_routes import get_current_user, get_user_organizations, get_user_groups
 from app.services.group_service import GroupService
 from app.services.group_member_service import GroupMemberService
@@ -229,6 +229,36 @@ async def add_member(
 
     if not target_user:
         return RedirectResponse(url="/groups?error=user_not_found", status_code=303)
+
+    # Get the group to find its organization
+    group_result = await db.execute(select(Group).where(Group.id == group_id))
+    group = group_result.scalar_one_or_none()
+    if not group:
+        return RedirectResponse(url="/groups?error=group_not_found", status_code=303)
+
+    # Check if user is an active member of the organization
+    org_member_result = await db.execute(
+        select(OrganizationMember).where(
+            OrganizationMember.organization_id == group.organization_id,
+            OrganizationMember.user_id == target_user.id,
+            OrganizationMember.status == "active"
+        )
+    )
+    org_membership = org_member_result.scalar_one_or_none()
+
+    # If not an org member, add them automatically
+    if not org_membership:
+        new_org_membership = OrganizationMember(
+            organization_id=group.organization_id,
+            user_id=target_user.id,
+            email=target_user.email,
+            role="member",
+            status="active",
+            invited_by_id=ctx.user.id,
+            accepted_at=utc_now(),
+        )
+        db.add(new_org_membership)
+        await db.flush()
 
     # Validate role - only owners can add other owners/admins
     requester_role = await group_member_service.get_role(group_id, ctx.user.id)

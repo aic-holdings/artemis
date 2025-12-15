@@ -4,13 +4,17 @@ Public pages: landing, login, register, settings.
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Request, Form
 from fastapi.responses import RedirectResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
+
 from app.database import get_db
+from app.models import User, OrganizationMember, utc_now
 from app.routers.auth_routes import get_current_user, require_user, get_user_organizations, get_user_groups
 from app.services.organization_service import OrganizationService
 
@@ -70,6 +74,27 @@ async def settings_page(request: Request, error: str = None, db: AsyncSession = 
     organizations = await get_user_organizations(ctx.user.id, db)
     groups = await get_user_groups(ctx.user.id, ctx.active_org_id, db) if ctx.active_org_id else []
 
+    # Get org members if there's an active org
+    org_members = []
+    user_org_role = None
+    if ctx.active_org:
+        result = await db.execute(
+            select(OrganizationMember)
+            .options(selectinload(OrganizationMember.user))
+            .where(
+                OrganizationMember.organization_id == ctx.active_org.id,
+                OrganizationMember.status == "active"
+            )
+            .order_by(OrganizationMember.role, OrganizationMember.email)
+        )
+        org_members = list(result.scalars().all())
+
+        # Check user's role in the org
+        for member in org_members:
+            if member.user_id == ctx.user.id:
+                user_org_role = member.role
+                break
+
     return templates.TemplateResponse(
         request,
         "settings.html",
@@ -79,6 +104,8 @@ async def settings_page(request: Request, error: str = None, db: AsyncSession = 
             "active_group": ctx.active_group,
             "organizations": organizations,
             "groups": groups,
+            "org_members": org_members,
+            "user_org_role": user_org_role,
             "error": error,
         },
     )
@@ -118,6 +145,129 @@ async def create_org(request: Request, db: AsyncSession = Depends(get_db)):
     except ValueError as e:
         error_msg = str(e).replace(" ", "+")
         return RedirectResponse(url=f"/settings?error={error_msg}", status_code=303)
+
+
+@router.post("/org/members")
+async def add_org_member(
+    request: Request,
+    email: str = Form(...),
+    role: str = Form("member"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Add a member to the active organization."""
+    ctx = await require_user(request, db)
+
+    if not ctx.active_org:
+        return RedirectResponse(url="/settings?error=No+organization+selected", status_code=303)
+
+    # Check if user can manage members (must be owner or admin)
+    user_membership = await db.execute(
+        select(OrganizationMember).where(
+            OrganizationMember.organization_id == ctx.active_org.id,
+            OrganizationMember.user_id == ctx.user.id,
+            OrganizationMember.status == "active"
+        )
+    )
+    user_member = user_membership.scalar_one_or_none()
+
+    if not user_member or user_member.role not in ("owner", "admin"):
+        return RedirectResponse(url="/settings?error=No+permission+to+add+members", status_code=303)
+
+    # Only owners can add other owners/admins
+    if role in ("owner", "admin") and user_member.role != "owner":
+        return RedirectResponse(url="/settings?error=Only+owners+can+add+admins", status_code=303)
+
+    # Find the user by email
+    result = await db.execute(select(User).where(User.email == email.strip().lower()))
+    target_user = result.scalar_one_or_none()
+
+    if not target_user:
+        return RedirectResponse(url="/settings?error=User+not+found", status_code=303)
+
+    # Check if already a member
+    existing = await db.execute(
+        select(OrganizationMember).where(
+            OrganizationMember.organization_id == ctx.active_org.id,
+            OrganizationMember.user_id == target_user.id,
+            OrganizationMember.status == "active"
+        )
+    )
+    if existing.scalar_one_or_none():
+        return RedirectResponse(url="/settings?error=User+is+already+a+member", status_code=303)
+
+    # Add the member
+    new_membership = OrganizationMember(
+        organization_id=ctx.active_org.id,
+        user_id=target_user.id,
+        email=target_user.email,
+        role=role,
+        status="active",
+        invited_by_id=ctx.user.id,
+        accepted_at=utc_now(),
+    )
+    db.add(new_membership)
+    await db.commit()
+
+    return RedirectResponse(url="/settings", status_code=303)
+
+
+@router.post("/org/members/{user_id}/remove")
+async def remove_org_member(
+    request: Request,
+    user_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Remove a member from the active organization."""
+    ctx = await require_user(request, db)
+
+    if not ctx.active_org:
+        return RedirectResponse(url="/settings?error=No+organization+selected", status_code=303)
+
+    # Check if user can manage members (must be owner or admin) - unless removing themselves
+    user_membership = await db.execute(
+        select(OrganizationMember).where(
+            OrganizationMember.organization_id == ctx.active_org.id,
+            OrganizationMember.user_id == ctx.user.id,
+            OrganizationMember.status == "active"
+        )
+    )
+    user_member = user_membership.scalar_one_or_none()
+
+    if user_id != ctx.user.id:
+        if not user_member or user_member.role not in ("owner", "admin"):
+            return RedirectResponse(url="/settings?error=No+permission+to+remove+members", status_code=303)
+
+    # Get the membership to remove
+    target_membership = await db.execute(
+        select(OrganizationMember).where(
+            OrganizationMember.organization_id == ctx.active_org.id,
+            OrganizationMember.user_id == user_id,
+            OrganizationMember.status == "active"
+        )
+    )
+    target_member = target_membership.scalar_one_or_none()
+
+    if not target_member:
+        return RedirectResponse(url="/settings?error=Member+not+found", status_code=303)
+
+    # Prevent removing the last owner
+    if target_member.role == "owner":
+        owner_count = await db.execute(
+            select(OrganizationMember).where(
+                OrganizationMember.organization_id == ctx.active_org.id,
+                OrganizationMember.role == "owner",
+                OrganizationMember.status == "active"
+            )
+        )
+        owners = list(owner_count.scalars().all())
+        if len(owners) <= 1:
+            return RedirectResponse(url="/settings?error=Cannot+remove+the+last+owner", status_code=303)
+
+    # Remove the member (set status to revoked)
+    target_member.status = "revoked"
+    await db.commit()
+
+    return RedirectResponse(url="/settings", status_code=303)
 
 
 # =============================================================================
