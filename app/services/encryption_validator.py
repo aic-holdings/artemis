@@ -9,7 +9,7 @@ from typing import Dict, Any
 from sqlalchemy import select, text
 from cryptography.fernet import InvalidToken
 
-from app.database import async_session_maker
+from app.database import async_session
 from app.auth import decrypt_api_key
 from app.models import ProviderKey
 
@@ -28,7 +28,7 @@ async def validate_encryption_key() -> Dict[str, Any]:
         - error: Error message (if error)
     """
     try:
-        async with async_session_maker() as session:
+        async with async_session() as session:
             # Get all provider keys
             result = await session.execute(select(ProviderKey))
             keys = result.scalars().all()
@@ -108,7 +108,7 @@ async def get_encryption_health() -> Dict[str, Any]:
     Lighter weight than full validation - just checks if we CAN decrypt.
     """
     try:
-        async with async_session_maker() as session:
+        async with async_session() as session:
             # Just check if any provider key exists and can be decrypted
             result = await session.execute(
                 select(ProviderKey).limit(1)
