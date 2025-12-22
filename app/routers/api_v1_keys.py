@@ -19,6 +19,7 @@ from app.models import APIKey, User
 from app.services.api_key_service import APIKeyService
 from app.services.provider_account_service import ProviderAccountService
 from app.services.provider_key_service import ProviderKeyService
+from app.services.provider_model_service import ProviderModelService
 
 
 router = APIRouter(prefix="/api/v1", tags=["API Keys"])
@@ -411,3 +412,105 @@ async def delete_provider_key(
     await provider_key_service.delete(key_id, str(auth_key.user_id))
 
     return {"message": "Provider key deleted", "id": key_id}
+
+
+# ============================================================================
+# Model Management API
+# ============================================================================
+
+
+class EnableModelRequest(BaseModel):
+    """Request body for enabling/disabling a model."""
+    model_id: str
+    enabled: bool = True
+
+
+@router.post("/providers/{provider_id}/models/enable")
+async def enable_model(
+    provider_id: str,
+    body: EnableModelRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Enable or disable a model for use.
+
+    **Request:**
+    ```
+    POST /api/v1/providers/openrouter/models/enable
+    Authorization: Bearer art_xxx
+    Content-Type: application/json
+
+    {"model_id": "anthropic/claude-3.5-sonnet", "enabled": true}
+    ```
+    """
+    # Validate API key (just needs to be valid, no group restriction)
+    await get_api_key_from_header(request, db)
+
+    provider_id = provider_id.lower().strip()
+    model_service = ProviderModelService(db)
+
+    # Find the model
+    from sqlalchemy import select
+    from app.models import ProviderModel
+
+    result = await db.execute(
+        select(ProviderModel).where(
+            ProviderModel.provider_id == provider_id,
+            ProviderModel.model_id == body.model_id,
+        )
+    )
+    model = result.scalar_one_or_none()
+
+    if not model:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Model '{body.model_id}' not found for provider '{provider_id}'"
+        )
+
+    model.is_enabled = body.enabled
+    await db.commit()
+
+    return {
+        "model_id": model.model_id,
+        "provider_id": provider_id,
+        "enabled": model.is_enabled,
+    }
+
+
+@router.get("/providers/{provider_id}/models")
+async def list_models(
+    provider_id: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    enabled_only: bool = False,
+):
+    """
+    List models for a provider.
+
+    **Request:**
+    ```
+    GET /api/v1/providers/openrouter/models?enabled_only=true
+    Authorization: Bearer art_xxx
+    ```
+    """
+    await get_api_key_from_header(request, db)
+
+    provider_id = provider_id.lower().strip()
+    model_service = ProviderModelService(db)
+
+    models = await model_service.get_all_for_provider(provider_id, enabled_only=enabled_only)
+
+    return {
+        "provider_id": provider_id,
+        "models": [
+            {
+                "model_id": m.model_id,
+                "name": m.name,
+                "is_enabled": m.is_enabled,
+                "context_length": m.context_length,
+            }
+            for m in models
+        ],
+        "count": len(models),
+    }
