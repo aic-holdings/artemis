@@ -38,6 +38,31 @@ async def lifespan(app: FastAPI):
     """Initialize database and load health records on startup."""
     await init_db()
 
+    # CRITICAL: Verify encryption key can decrypt existing provider keys
+    # This prevents silent failures where keys exist but can't be used
+    from app.services.encryption_validator import validate_encryption_key
+    encryption_status = await validate_encryption_key()
+    if encryption_status["status"] == "error":
+        print("=" * 60)
+        print("CRITICAL: ENCRYPTION_KEY MISMATCH DETECTED")
+        print("=" * 60)
+        print(f"Error: {encryption_status['error']}")
+        print(f"Affected keys: {encryption_status.get('affected_count', 'unknown')}")
+        print("")
+        print("Provider keys exist but cannot be decrypted.")
+        print("This usually means ENCRYPTION_KEY was changed without migration.")
+        print("")
+        print("To fix:")
+        print("1. Restore the original ENCRYPTION_KEY, OR")
+        print("2. Delete all provider keys and re-add them")
+        print("=" * 60)
+        # Store status for health check
+        app.state.encryption_status = encryption_status
+    else:
+        app.state.encryption_status = encryption_status
+        if encryption_status["status"] == "warning":
+            print(f"Warning: {encryption_status.get('message', 'Encryption validation warning')}")
+
     # Load provider health records from database
     from app.services.provider_health import provider_health
     await provider_health.load_from_database()
@@ -74,19 +99,34 @@ app.include_router(proxy_routes.router, tags=["proxy"])
 
 
 @app.get("/health")
-async def health_check():
-    """Health check endpoint."""
+async def health_check(request: Request):
+    """Health check endpoint with encryption validation status."""
     from app.config import settings
-    return {
-        "status": "healthy",
+
+    # Get encryption status from app state (set during startup)
+    encryption_status = getattr(request.app.state, "encryption_status", None)
+
+    # Determine overall health
+    if encryption_status and encryption_status.get("status") == "error":
+        overall_status = "degraded"
+    else:
+        overall_status = "healthy"
+
+    response = {
+        "status": overall_status,
         "service": "artemis",
         "version": "1.0.0",
         "auth": {
             "provider": "custom-jwt",
             "sso_enabled": settings.SSO_ENABLED,
             "sso_url": settings.JETTA_SSO_URL if settings.SSO_ENABLED else None,
+        },
+        "checks": {
+            "encryption": encryption_status or {"status": "unknown"},
         }
     }
+
+    return response
 
 
 @app.get("/test-error")
