@@ -2,7 +2,7 @@
 Programmatic API for key management.
 
 Allows CLI tools and automated systems to create/manage API keys
-using an existing Artemis key for authentication.
+and provider keys using an existing Artemis key for authentication.
 """
 import hashlib
 from datetime import datetime, timezone
@@ -17,6 +17,8 @@ from sqlalchemy import select
 from app.database import get_db
 from app.models import APIKey, User
 from app.services.api_key_service import APIKeyService
+from app.services.provider_account_service import ProviderAccountService
+from app.services.provider_key_service import ProviderKeyService
 
 
 router = APIRouter(prefix="/api/v1", tags=["API Keys"])
@@ -217,3 +219,195 @@ async def revoke_key(
     await db.commit()
 
     return {"message": "Key revoked", "id": key_id}
+
+
+# ============================================================================
+# Provider Key Management API
+# ============================================================================
+
+
+class AddProviderKeyRequest(BaseModel):
+    """Request body for adding a provider key."""
+    api_key: str
+    name: str = "Default"
+
+
+@router.get("/providers")
+async def list_provider_keys(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    List all provider keys for the authenticated group.
+
+    **Request:**
+    ```
+    GET /api/v1/providers
+    Authorization: Bearer art_xxx
+    ```
+
+    **Response:**
+    ```json
+    {
+        "group_id": "uuid",
+        "providers": {
+            "openrouter": [
+                {"id": "uuid", "name": "Default", "key_suffix": "3d3d", "is_default": true}
+            ],
+            "openai": [...]
+        }
+    }
+    ```
+    """
+    auth_key = await get_api_key_from_header(request, db)
+
+    if not auth_key.group_id:
+        raise HTTPException(
+            status_code=400,
+            detail="API key is not associated with a group. Provider keys require group context."
+        )
+
+    provider_key_service = ProviderKeyService(db)
+    keys = await provider_key_service.get_all_for_group(auth_key.group_id, include_account=True)
+
+    # Organize by provider
+    providers = {}
+    for key in keys:
+        provider_id = key.account.provider_id if key.account else "unknown"
+        if provider_id not in providers:
+            providers[provider_id] = []
+        providers[provider_id].append({
+            "id": str(key.id),
+            "name": key.name,
+            "key_suffix": key.key_suffix,
+            "is_default": key.is_default,
+            "is_active": key.is_active,
+            "created_at": key.created_at.isoformat() if key.created_at else None,
+        })
+
+    return {
+        "group_id": str(auth_key.group_id),
+        "providers": providers,
+    }
+
+
+@router.post("/providers/{provider_id}/keys")
+async def add_provider_key(
+    provider_id: str,
+    body: AddProviderKeyRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Add a provider API key to the authenticated group.
+
+    This creates a provider account (if needed) and adds the key to it.
+    The key will be encrypted and stored securely.
+
+    **Request:**
+    ```
+    POST /api/v1/providers/openrouter/keys
+    Authorization: Bearer art_xxx
+    Content-Type: application/json
+
+    {"api_key": "sk-or-v1-xxx", "name": "Production Key"}
+    ```
+
+    **Response:**
+    ```json
+    {
+        "id": "uuid",
+        "name": "Production Key",
+        "key_suffix": "xxxx",
+        "provider_id": "openrouter",
+        "is_default": true
+    }
+    ```
+    """
+    auth_key = await get_api_key_from_header(request, db)
+
+    if not auth_key.group_id:
+        raise HTTPException(
+            status_code=400,
+            detail="API key is not associated with a group. Provider keys require group context."
+        )
+
+    # Normalize provider ID
+    provider_id = provider_id.lower().strip()
+
+    # Valid providers
+    valid_providers = ["openai", "anthropic", "google", "openrouter", "perplexity"]
+    if provider_id not in valid_providers:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid provider: {provider_id}. Valid providers: {', '.join(valid_providers)}"
+        )
+
+    provider_account_service = ProviderAccountService(db)
+    provider_key_service = ProviderKeyService(db)
+
+    # Get or create a default account for this provider
+    account = await provider_account_service.get_or_create_default(
+        group_id=str(auth_key.group_id),
+        provider_id=provider_id,
+        created_by_id=str(auth_key.user_id),
+    )
+
+    # Check for duplicate key name
+    name = body.name.strip() or "Default"
+    if await provider_key_service.name_exists(str(account.id), name):
+        raise HTTPException(
+            status_code=409,
+            detail=f"A key named '{name}' already exists for {provider_id}. Choose a different name."
+        )
+
+    # Create the key
+    provider_key = await provider_key_service.create(
+        provider_account_id=str(account.id),
+        user_id=str(auth_key.user_id),
+        key=body.api_key,
+        name=name,
+    )
+
+    return {
+        "id": str(provider_key.id),
+        "name": provider_key.name,
+        "key_suffix": provider_key.key_suffix,
+        "provider_id": provider_id,
+        "is_default": provider_key.is_default,
+    }
+
+
+@router.delete("/providers/keys/{key_id}")
+async def delete_provider_key(
+    key_id: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Delete a provider API key.
+
+    **Request:**
+    ```
+    DELETE /api/v1/providers/keys/{key_id}
+    Authorization: Bearer art_xxx
+    ```
+    """
+    auth_key = await get_api_key_from_header(request, db)
+
+    if not auth_key.group_id:
+        raise HTTPException(
+            status_code=400,
+            detail="API key is not associated with a group."
+        )
+
+    provider_key_service = ProviderKeyService(db)
+
+    # Get the key and verify it belongs to this group
+    key = await provider_key_service.get_by_id(key_id, include_account=True)
+    if not key or not key.account or str(key.account.group_id) != str(auth_key.group_id):
+        raise HTTPException(status_code=404, detail="Provider key not found")
+
+    await provider_key_service.delete(key_id, str(auth_key.user_id))
+
+    return {"message": "Provider key deleted", "id": key_id}
