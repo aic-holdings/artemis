@@ -27,7 +27,7 @@ from app.database import get_db
 from app.models import APIKey, ProviderKey, ProviderAccount, UsageLog, AppLog
 from app.auth import decrypt_api_key
 from app.config import settings
-from app.providers.pricing import calculate_cost
+from app.providers.pricing import calculate_cost, get_fallback_pricing
 from app.services.provider_health import provider_health
 from app.services.request_log_service import RequestLogService, generate_request_id
 from app.services.provider_model_service import ProviderModelService
@@ -87,23 +87,82 @@ def make_error_response(
     message: str,
     provider: str = None,
     request_id: str = None,
+    category: str = None,
+    recovery: dict = None,
+    context: dict = None,
 ) -> JSONResponse:
     """
-    Create an error response in OpenAI-compatible format.
+    Create an agent-friendly error response with structured metadata.
 
-    This ensures SDK clients can parse the error properly.
+    Categories:
+    - transient: Retry may succeed (rate limits, timeouts, temporary failures)
+    - permanent: Won't succeed without changes (invalid model, auth error)
+    - policy: Blocked by policy (content filter, budget exceeded)
+    - upstream: Provider-side issue
+
+    Recovery actions:
+    - retry: Simple retry
+    - retry_with_backoff: Retry with exponential backoff
+    - switch_provider: Try a different provider
+    - reduce_tokens: Request is too large
+    - check_api_key: API key issue
+    - contact_support: Unrecoverable error
     """
+    # Infer category from error type if not provided
+    if category is None:
+        if error_type in ("timeout", "connection_error", "stream_error"):
+            category = "transient"
+        elif error_type in ("rate_limited", "provider_overloaded"):
+            category = "transient"
+        elif error_type in ("invalid_api_key", "invalid_provider", "model_disabled"):
+            category = "permanent"
+        elif error_type in ("budget_exceeded", "content_filtered"):
+            category = "policy"
+        elif error_type in ("provider_error", "http_error"):
+            category = "upstream"
+        else:
+            category = "unknown"
+
+    # Build recovery suggestion if not provided
+    if recovery is None:
+        if category == "transient":
+            recovery = {
+                "action": "retry_with_backoff",
+                "delay_ms": 1000,
+                "max_retries": 3,
+            }
+            if provider:
+                # Suggest alternative providers
+                alternatives = [p for p in ["openai", "anthropic", "google"] if p != provider]
+                recovery["alternative_providers"] = alternatives
+        elif error_type == "invalid_api_key":
+            recovery = {
+                "action": "check_api_key",
+                "docs": "/guide/api-keys",
+            }
+        elif error_type == "model_disabled":
+            recovery = {
+                "action": "list_models",
+                "endpoint": "/v1/models",
+            }
+
     error_body = {
         "error": {
+            "code": error_type.upper(),
             "message": message,
             "type": error_type,
-            "code": error_type,
+            "category": category,
         }
     }
+
     if provider:
         error_body["error"]["provider"] = provider
     if request_id:
         error_body["error"]["request_id"] = request_id
+    if recovery:
+        error_body["error"]["recovery"] = recovery
+    if context:
+        error_body["error"]["context"] = context
 
     return JSONResponse(status_code=status_code, content=error_body)
 
@@ -822,6 +881,7 @@ async def handle_non_streaming_request(
     input_tokens = 0
     output_tokens = 0
     response_data = None
+    cost_cents = 0
 
     try:
         response_data = response.json()
@@ -831,6 +891,8 @@ async def handle_non_streaming_request(
         # Only override if response had a model
         if resp_model != "unknown":
             model = resp_model
+        # Calculate cost
+        cost_cents = calculate_cost(provider, model, input_tokens, output_tokens)
     except (json.JSONDecodeError, Exception):
         pass
 
@@ -878,8 +940,37 @@ async def handle_non_streaming_request(
     # Add our request ID for tracing
     response_headers["x-artemis-request-id"] = request_id
 
+    # Add agent-friendly headers
+    response_headers["x-artemis-provider"] = provider
+    response_headers["x-artemis-model"] = model
+    response_headers["x-artemis-latency-ms"] = str(latency_ms)
+    response_headers["x-artemis-cost-cents"] = str(cost_cents)
+    response_headers["x-artemis-cost-usd"] = f"{cost_cents / 100:.6f}"
+
+    # For JSON responses, inject _artemis metadata into the body
+    response_content = response.content
+    if response_data is not None and response.status_code < 400:
+        # Add _artemis block with agent-friendly metadata
+        response_data["_artemis"] = {
+            "request_id": request_id,
+            "provider": provider,
+            "model": model,
+            "latency_ms": latency_ms,
+            "cost": {
+                "input_cents": round((input_tokens / 1_000_000) * get_fallback_pricing(provider, model)[0], 4),
+                "output_cents": round((output_tokens / 1_000_000) * get_fallback_pricing(provider, model)[1], 4),
+                "total_cents": cost_cents,
+                "total_usd": round(cost_cents / 100, 6),
+            },
+            "tokens": {
+                "input": input_tokens,
+                "output": output_tokens,
+            },
+        }
+        response_content = json.dumps(response_data).encode()
+
     return Response(
-        content=response.content,
+        content=response_content,
         status_code=response.status_code,
         headers=response_headers,
     )
