@@ -11,7 +11,7 @@ from typing import Optional
 
 import httpx
 from fastapi import APIRouter, Depends, Request, HTTPException, UploadFile, File, Form
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -28,16 +28,19 @@ WHISPER_PROVIDERS = {
         "name": "Self-hosted Whisper",
         "base_url": "https://whisper.meetrhea.com",
         "auth_type": None,  # No auth needed for self-hosted
+        "model": "Systran/faster-whisper-large-v3",  # faster-whisper model
     },
     "groq": {
         "name": "Groq Whisper",
         "base_url": "https://api.groq.com/openai/v1",
         "auth_type": "bearer",
+        "model": "whisper-large-v3-turbo",  # Groq's fast Whisper model
     },
     "openai": {
         "name": "OpenAI Whisper",
         "base_url": "https://api.openai.com/v1",
         "auth_type": "bearer",
+        "model": "whisper-1",  # OpenAI's Whisper model
     },
 }
 
@@ -230,9 +233,9 @@ async def transcribe_audio(
         if decrypted_key:
             headers["Authorization"] = f"Bearer {decrypted_key}"
 
-        # Build form data
+        # Build form data - use provider-specific model
         form_data = {
-            "model": model if provider_id == "openai" else "whisper-large-v3",
+            "model": provider_config.get("model", model),
         }
         if language:
             form_data["language"] = language
@@ -266,19 +269,27 @@ async def transcribe_audio(
                         api_key_id=api_key_obj.id,
                         provider_key_id=provider_key.id if provider_key else None,
                         provider=provider_id,
-                        model=model,
+                        model=form_data["model"],
                         audio_duration_seconds=estimated_duration_seconds,
                         latency_ms=latency_ms,
                         app_id=request.headers.get("X-App-Id"),
                     )
 
-                    # Return the response
-                    result = response.json()
-                    result["_artemis"] = {
-                        "provider": provider_id,
-                        "latency_ms": latency_ms,
-                    }
-                    return result
+                    # Return the response based on format
+                    if response_format == "json" or response_format == "verbose_json":
+                        result = response.json()
+                        result["_artemis"] = {
+                            "provider": provider_id,
+                            "latency_ms": latency_ms,
+                        }
+                        return result
+                    else:
+                        # For text, srt, vtt formats - return as plain text
+                        return PlainTextResponse(
+                            content=response.text,
+                            media_type="text/plain",
+                            headers={"X-Artemis-Provider": provider_id, "X-Artemis-Latency-Ms": str(latency_ms)},
+                        )
                 else:
                     last_error = f"{provider_id}: HTTP {response.status_code} - {response.text[:200]}"
                     continue
