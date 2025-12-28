@@ -8,10 +8,16 @@
 
 ## Environments
 
-### Production
-- **URL**: https://artemis.jettaintelligence.com
-- **Database**: PostgreSQL on Coolify (internal hostname: `wkcskwwo8skoo0g00s080koo`)
-- **Deployed via**: Coolify (app uuid: `n4kg4cc44cwkc8gcwws8wkkw`)
+### Production (Rhea)
+- **URL**: https://artemis.meetrhea.com
+- **Database**: PostgreSQL on Coolify (TBD - needs manual creation)
+- **Deployed via**: Coolify (app uuid: `t8o840kw8sgoscog4w444ccg`)
+- **SSO**: Rhea SSO at https://login.meetrhea.com
+
+### Fork Relationship
+This is a fork of `aic-holdings/artemis`. It can evolve independently:
+- `origin` -> `meetrhea/artemis` (push changes here)
+- `upstream` -> `aic-holdings/artemis` (pull upstream updates when needed)
 
 ### Local Development
 ```bash
@@ -27,6 +33,13 @@ source venv/bin/activate && LOCALHOST_MODE=true uvicorn app.main:app --reload --
 ## Project Overview
 
 Artemis is an AI Management Platform - a unified proxy for LLM API calls with usage tracking, cost analytics, and multi-provider support.
+
+### Key Features
+- **LLM Proxy**: Unified API for OpenAI, Anthropic, Google, Perplexity, OpenRouter
+- **Whisper Transcription**: Audio transcription via `/v1/audio/transcriptions`
+- **Usage Tracking**: Per-request logging with cost calculation
+- **Multi-tenant**: Organization -> Group -> Keys hierarchy
+- **SSO Integration**: Rhea SSO for authentication
 
 ### Key Architecture
 
@@ -49,6 +62,8 @@ app/
   models.py        # SQLAlchemy models
   database.py      # DB connection
   routers/         # Route handlers
+    whisper.py     # Whisper audio transcription
+    proxy_routes.py # LLM API proxy
   services/        # Business logic
   templates/       # Jinja2 HTML templates
   static/          # CSS, JS assets
