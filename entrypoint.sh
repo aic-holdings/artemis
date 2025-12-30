@@ -1,14 +1,13 @@
 #!/bin/bash
-set -e
 
 echo "=== Artemis Startup ==="
-echo "Running database migrations..."
+echo "DATABASE_URL is set: $(if [ -n "$DATABASE_URL" ]; then echo 'yes'; else echo 'NO!'; fi)"
 
-if alembic upgrade head; then
-    echo "Migrations completed successfully"
-else
-    echo "WARNING: Migration failed, but continuing..."
-fi
+echo "Running database migrations..."
+alembic upgrade head 2>&1 || echo "WARNING: Migration command returned error"
+
+echo "Checking alembic current version..."
+alembic current 2>&1 || echo "WARNING: Could not get current version"
 
 echo "Starting Artemis server..."
 exec uvicorn app.main:app --host 0.0.0.0 --port 8000
