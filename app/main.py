@@ -32,6 +32,7 @@ from app.routers import (
     chat,
     whisper,
     agent_api,
+    admin_api,
 )
 
 
@@ -99,6 +100,7 @@ app.include_router(chat.router, tags=["chat"])
 app.include_router(whisper.router, tags=["whisper"])
 app.include_router(agent_api.router, tags=["agent-api"])
 app.include_router(api_v1_keys.router, tags=["api-v1"])
+app.include_router(admin_api.router, tags=["admin"])
 app.include_router(proxy_routes.router, tags=["proxy"])
 
 

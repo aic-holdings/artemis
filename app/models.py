@@ -39,6 +39,7 @@ class User(Base):
     tier = Column(String, default="free")  # free, pro, enterprise
     organization_id = Column(String, ForeignKey("organizations.id"), nullable=True, index=True)
     settings = Column(JSON, nullable=True, default=dict)  # User preferences (last_org_id, theme, etc.)
+    is_service_account = Column(Boolean, default=False, nullable=False)  # Machine identity for apps
     created_at = Column(DateTime(timezone=True), default=utc_now)
 
     organization = relationship("Organization", foreign_keys=[organization_id], back_populates="users")

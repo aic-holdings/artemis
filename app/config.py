@@ -34,6 +34,10 @@ class Settings:
     # Artemis URL for SSO callback redirect
     ARTEMIS_URL: str = os.getenv("ARTEMIS_URL", "https://artemis.jettaintelligence.com")
 
+    # Master API key for admin operations (creating service accounts, issuing keys)
+    # This bypasses normal auth and should be kept secure
+    MASTER_API_KEY: str = os.getenv("MASTER_API_KEY", "")
+
     # Provider base URLs
     PROVIDER_URLS = {
         "openai": "https://api.openai.com",
