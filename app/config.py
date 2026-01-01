@@ -45,6 +45,7 @@ class Settings:
         "google": "https://generativelanguage.googleapis.com",
         "perplexity": "https://api.perplexity.ai",
         "openrouter": "https://openrouter.ai/api/v1",
+        "v0": "https://api.v0.dev/v1",
     }
 
 

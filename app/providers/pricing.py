@@ -109,6 +109,11 @@ FALLBACK_PRICING = {
         # OpenRouter has dynamic pricing, these are approximations
         "default": (100, 100),
     },
+    "v0": {
+        # v0 pricing TBD - using placeholder values
+        "v0-1.5-md": (0, 0),
+        "v0-1.5-lg": (0, 0),
+    },
 }
 
 # Default pricing for unknown models (conservative estimate)

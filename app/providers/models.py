@@ -40,6 +40,10 @@ PROVIDER_MODELS = {
         ("google/gemini-pro-1.5", "Gemini 1.5 Pro (via OpenRouter)"),
         ("meta-llama/llama-3.1-405b-instruct", "Llama 3.1 405B"),
     ],
+    "v0": [
+        ("v0-1.5-md", "v0 1.5 Medium"),
+        ("v0-1.5-lg", "v0 1.5 Large"),
+    ],
 }
 
 # Provider display names
@@ -49,6 +53,7 @@ PROVIDER_NAMES = {
     "google": "Google",
     "perplexity": "Perplexity",
     "openrouter": "OpenRouter",
+    "v0": "v0 (Vercel)",
 }
 
 

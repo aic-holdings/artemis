@@ -49,6 +49,13 @@ DEFAULT_PROVIDERS = [
         "docs_url": "https://openrouter.ai/docs",
         "is_active": True,
     },
+    {
+        "id": "v0",
+        "name": "v0 (Vercel)",
+        "base_url": "https://api.v0.dev/v1",
+        "docs_url": "https://v0.app/docs/api/model",
+        "is_active": True,
+    },
 ]
 
 

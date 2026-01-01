@@ -396,6 +396,8 @@ async def proxy_request(
         headers["Authorization"] = f"Bearer {provider_api_key}"
     elif provider == "openrouter":
         headers["Authorization"] = f"Bearer {provider_api_key}"
+    elif provider == "v0":
+        headers["Authorization"] = f"Bearer {provider_api_key}"
 
     # Get request body
     body = await request.body()
