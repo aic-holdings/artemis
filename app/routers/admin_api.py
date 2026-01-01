@@ -19,9 +19,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.database import get_db
-from app.models import User, Organization, Group, APIKey
+from app.models import User, Organization, Group, APIKey, Provider, ProviderAccount, ProviderKey
 from app.config import settings
-from app.auth import generate_api_key, hash_password
+from app.auth import generate_api_key, hash_password, encrypt_api_key
 
 
 router = APIRouter(prefix="/api/v1/admin", tags=["Admin"])
@@ -372,3 +372,232 @@ async def revoke_key_admin(
     await db.commit()
 
     return {"message": "Key revoked", "id": key_id}
+
+
+# =============================================================================
+# Provider Key Management (Admin)
+# =============================================================================
+
+
+class AddProviderKeyRequest(BaseModel):
+    """Request to add a provider API key."""
+    provider_id: str  # e.g., "openai", "v0"
+    api_key: str  # The actual provider API key
+    name: str = "Default"
+    service_account_name: Optional[str] = None  # If None, uses first available group
+
+
+class AddProviderKeyResponse(BaseModel):
+    """Response after adding a provider key."""
+    provider_id: str
+    account_id: str
+    key_id: str
+    key_suffix: str
+    group_id: str
+    message: str
+
+
+@router.post("/provider-keys", response_model=AddProviderKeyResponse)
+async def add_provider_key(
+    body: AddProviderKeyRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Add a provider API key (e.g., OpenAI, Anthropic, v0).
+
+    This allows AI agents to configure provider keys programmatically.
+
+    **Request:**
+    ```
+    POST /api/v1/admin/provider-keys
+    Authorization: Bearer <MASTER_API_KEY>
+    Content-Type: application/json
+
+    {
+        "provider_id": "v0",
+        "api_key": "v1:xxx...",
+        "name": "v0 API Key",
+        "service_account_name": "janus"  // optional
+    }
+    ```
+    """
+    await verify_master_key(request)
+
+    provider_id = body.provider_id.lower().strip()
+    if not provider_id:
+        raise HTTPException(status_code=400, detail="provider_id is required")
+
+    # Verify provider exists
+    result = await db.execute(select(Provider).where(Provider.id == provider_id))
+    provider = result.scalar_one_or_none()
+    if not provider:
+        # Auto-create provider if it's a known one
+        if provider_id in settings.PROVIDER_URLS:
+            provider = Provider(
+                id=provider_id,
+                name=provider_id.title(),
+                base_url=settings.PROVIDER_URLS[provider_id],
+                is_active=True
+            )
+            db.add(provider)
+            await db.flush()
+        else:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Provider '{provider_id}' not found and not in PROVIDER_URLS"
+            )
+
+    # Find group to add key to
+    group = None
+    if body.service_account_name:
+        # Use service account's group
+        email = f"{body.service_account_name.lower()}@service.artemis.local"
+        result = await db.execute(
+            select(User).where(User.email == email, User.is_service_account == True)
+        )
+        user = result.scalar_one_or_none()
+        if not user:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Service account '{body.service_account_name}' not found"
+            )
+
+        result = await db.execute(
+            select(Group)
+            .join(Organization, Group.organization_id == Organization.id)
+            .where(Organization.owner_id == user.id)
+        )
+        group = result.scalar_one_or_none()
+    else:
+        # Use first available group
+        result = await db.execute(select(Group).limit(1))
+        group = result.scalar_one_or_none()
+
+    if not group:
+        raise HTTPException(
+            status_code=404,
+            detail="No groups found. Create a service account first."
+        )
+
+    # Get or create provider account for this group
+    result = await db.execute(
+        select(ProviderAccount).where(
+            ProviderAccount.group_id == group.id,
+            ProviderAccount.provider_id == provider_id
+        )
+    )
+    account = result.scalar_one_or_none()
+
+    if not account:
+        account = ProviderAccount(
+            group_id=group.id,
+            provider_id=provider_id,
+            name="Default"
+        )
+        db.add(account)
+        await db.flush()
+
+    # Check if key already exists with same suffix
+    key_suffix = body.api_key[-4:] if len(body.api_key) >= 4 else body.api_key
+    result = await db.execute(
+        select(ProviderKey).where(
+            ProviderKey.provider_account_id == account.id,
+            ProviderKey.key_suffix == key_suffix
+        )
+    )
+    existing = result.scalar_one_or_none()
+    if existing:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Key ending in ****{key_suffix} already exists for {provider_id}"
+        )
+
+    # Add the key
+    provider_key = ProviderKey(
+        provider_account_id=account.id,
+        encrypted_key=encrypt_api_key(body.api_key),
+        name=body.name,
+        key_suffix=key_suffix,
+        is_default=True,
+        is_active=True
+    )
+    db.add(provider_key)
+    await db.commit()
+
+    return AddProviderKeyResponse(
+        provider_id=provider_id,
+        account_id=str(account.id),
+        key_id=str(provider_key.id),
+        key_suffix=key_suffix,
+        group_id=str(group.id),
+        message=f"Provider key added for {provider_id}"
+    )
+
+
+@router.get("/provider-keys")
+async def list_provider_keys(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    List all provider keys (admin view).
+
+    **Request:**
+    ```
+    GET /api/v1/admin/provider-keys
+    Authorization: Bearer <MASTER_API_KEY>
+    ```
+    """
+    await verify_master_key(request)
+
+    result = await db.execute(
+        select(ProviderKey, ProviderAccount, Group)
+        .join(ProviderAccount, ProviderKey.provider_account_id == ProviderAccount.id)
+        .join(Group, ProviderAccount.group_id == Group.id)
+    )
+    rows = result.all()
+
+    return {
+        "provider_keys": [
+            {
+                "id": str(pk.id),
+                "provider_id": pa.provider_id,
+                "name": pk.name,
+                "key_suffix": pk.key_suffix,
+                "is_active": pk.is_active,
+                "is_default": pk.is_default,
+                "group_name": g.name,
+                "account_name": pa.name,
+            }
+            for pk, pa, g in rows
+        ]
+    }
+
+
+@router.delete("/provider-keys/{key_id}")
+async def delete_provider_key(
+    key_id: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Delete a provider key.
+
+    **Request:**
+    ```
+    DELETE /api/v1/admin/provider-keys/{key_id}
+    Authorization: Bearer <MASTER_API_KEY>
+    ```
+    """
+    await verify_master_key(request)
+
+    result = await db.execute(select(ProviderKey).where(ProviderKey.id == key_id))
+    key = result.scalar_one_or_none()
+    if not key:
+        raise HTTPException(status_code=404, detail="Provider key not found")
+
+    await db.delete(key)
+    await db.commit()
+
+    return {"message": "Provider key deleted", "id": key_id}
