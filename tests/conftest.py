@@ -126,6 +126,7 @@ async def authenticated_client(client, test_db):
             Provider(id="google", name="Google"),
             Provider(id="perplexity", name="Perplexity"),
             Provider(id="openrouter", name="OpenRouter"),
+            Provider(id="v0", name="v0 (Vercel)"),
         ]
         for provider in providers:
             # Check if provider already exists

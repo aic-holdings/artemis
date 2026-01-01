@@ -77,7 +77,7 @@ class TestProxyProviders:
     @pytest.mark.asyncio
     async def test_proxy_valid_providers(self, client):
         """All valid providers are recognized."""
-        valid_providers = ["openai", "anthropic", "google", "perplexity", "openrouter"]
+        valid_providers = ["openai", "anthropic", "google", "perplexity", "openrouter", "v0"]
 
         for provider in valid_providers:
             response = await client.post(
