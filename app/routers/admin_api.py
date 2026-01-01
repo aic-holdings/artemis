@@ -448,16 +448,18 @@ async def add_provider_key(
                 detail=f"Provider '{provider_id}' not found and not in PROVIDER_URLS"
             )
 
-    # Find group to add key to
+    # Find group and user for key ownership
     group = None
+    owner_user = None
+
     if body.service_account_name:
-        # Use service account's group
+        # Use service account's group and user
         email = f"{body.service_account_name.lower()}@service.artemis.local"
         result = await db.execute(
             select(User).where(User.email == email, User.is_service_account == True)
         )
-        user = result.scalar_one_or_none()
-        if not user:
+        owner_user = result.scalar_one_or_none()
+        if not owner_user:
             raise HTTPException(
                 status_code=404,
                 detail=f"Service account '{body.service_account_name}' not found"
@@ -466,15 +468,24 @@ async def add_provider_key(
         result = await db.execute(
             select(Group)
             .join(Organization, Group.organization_id == Organization.id)
-            .where(Organization.owner_id == user.id)
+            .where(Organization.owner_id == owner_user.id)
         )
         group = result.scalar_one_or_none()
     else:
-        # Use first available group
-        result = await db.execute(select(Group).limit(1))
-        group = result.scalar_one_or_none()
+        # Use first available group and its owner
+        result = await db.execute(
+            select(Group, Organization)
+            .join(Organization, Group.organization_id == Organization.id)
+            .limit(1)
+        )
+        row = result.first()
+        if row:
+            group, org = row
+            # Get the organization owner as the key owner
+            result = await db.execute(select(User).where(User.id == org.owner_id))
+            owner_user = result.scalar_one_or_none()
 
-    if not group:
+    if not group or not owner_user:
         raise HTTPException(
             status_code=404,
             detail="No groups found. Create a service account first."
@@ -516,6 +527,7 @@ async def add_provider_key(
     # Add the key
     provider_key = ProviderKey(
         provider_account_id=account.id,
+        user_id=owner_user.id,
         encrypted_key=encrypt_api_key(body.api_key),
         name=body.name,
         key_suffix=key_suffix,
