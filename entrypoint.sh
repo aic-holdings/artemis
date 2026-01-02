@@ -3,6 +3,30 @@
 echo "=== Artemis Startup ==="
 echo "DATABASE_URL is set: $(if [ -n "$DATABASE_URL" ]; then echo 'yes'; else echo 'NO!'; fi)"
 
+# Start Ollama in background
+echo "Starting Ollama server..."
+ollama serve &
+OLLAMA_PID=$!
+
+# Wait for Ollama to be ready
+echo "Waiting for Ollama to start..."
+for i in {1..30}; do
+    if curl -s http://localhost:11434/api/tags > /dev/null 2>&1; then
+        echo "Ollama is ready!"
+        break
+    fi
+    sleep 1
+done
+
+# Pull embedding model if not present
+echo "Checking for nomic-embed-text model..."
+if ! ollama list | grep -q "nomic-embed-text"; then
+    echo "Pulling nomic-embed-text model (this may take a few minutes on first run)..."
+    ollama pull nomic-embed-text
+else
+    echo "nomic-embed-text model already available"
+fi
+
 echo "Running database migrations..."
 
 # Check current alembic state
