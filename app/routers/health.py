@@ -1,12 +1,15 @@
 """
 Health status monitoring routes.
 """
-from fastapi import APIRouter, Depends, Request
+import secrets
+from fastapi import APIRouter, Depends, Request, HTTPException
 from fastapi.responses import RedirectResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import text
 
 from app.database import get_db
+from app.config import settings
 from app.routers.auth_routes import get_current_user, get_user_organizations, get_user_groups
 from app.services.provider_health import provider_health
 
@@ -54,3 +57,56 @@ async def health_status_api(request: Request, db: AsyncSession = Depends(get_db)
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
 
     return JSONResponse(provider_health.get_summary())
+
+
+@router.post("/api/migrate")
+async def run_migration(request: Request, db: AsyncSession = Depends(get_db)):
+    """
+    One-time migration endpoint to add missing columns.
+    Protected by MASTER_API_KEY.
+
+    Call with:
+    curl -X POST https://artemis.jettaintelligence.com/api/migrate \
+         -H "Authorization: Bearer <MASTER_API_KEY>"
+    """
+    # Verify master API key
+    if not settings.MASTER_API_KEY:
+        raise HTTPException(status_code=503, detail="MASTER_API_KEY not configured")
+
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing Authorization header")
+
+    provided_key = auth_header[7:]
+    if not secrets.compare_digest(provided_key, settings.MASTER_API_KEY):
+        raise HTTPException(status_code=401, detail="Invalid master API key")
+
+    results = []
+
+    # Check and add is_service_account column
+    try:
+        check_col = await db.execute(text("""
+            SELECT column_name FROM information_schema.columns
+            WHERE table_name = 'users' AND column_name = 'is_service_account'
+        """))
+        col_exists = check_col.fetchone() is not None
+
+        if col_exists:
+            results.append({"column": "is_service_account", "status": "already_exists"})
+        else:
+            await db.execute(text("""
+                ALTER TABLE users ADD COLUMN is_service_account BOOLEAN NOT NULL DEFAULT false
+            """))
+            await db.commit()
+            results.append({"column": "is_service_account", "status": "added"})
+
+            # Update alembic version
+            await db.execute(text("""
+                UPDATE alembic_version SET version_num = 'd4e5f6g7h8i9'
+            """))
+            await db.commit()
+            results.append({"alembic": "stamped to d4e5f6g7h8i9"})
+    except Exception as e:
+        results.append({"error": str(e)})
+
+    return JSONResponse({"migrations": results})
