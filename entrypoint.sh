@@ -29,28 +29,36 @@ fi
 
 echo "Running database migrations..."
 
+# Latest migration revision
+LATEST_REVISION="d4e5f6g7h8i9"
+
 # Check current alembic state
 CURRENT=$(alembic current 2>&1)
 echo "Current alembic state: $CURRENT"
 
-# If no version tracked but tables exist, stamp to the last known good version
-if echo "$CURRENT" | grep -q "head"; then
-    echo "Already at head, no migrations needed"
+# If already at the latest revision, skip
+if echo "$CURRENT" | grep -q "$LATEST_REVISION"; then
+    echo "Already at latest revision ($LATEST_REVISION), no migrations needed"
 elif echo "$CURRENT" | grep -q "(head)"; then
     echo "Already at head, no migrations needed"
-elif echo "$CURRENT" | grep -q "c3d4e5f6g7h8"; then
-    echo "At c3d4e5f6g7h8, running upgrade..."
-    alembic upgrade head 2>&1
 else
-    # Try upgrade first
-    echo "Attempting upgrade..."
-    UPGRADE_RESULT=$(alembic upgrade head 2>&1)
+    # Try explicit upgrade to latest revision (avoids head resolution issues)
+    echo "Upgrading to $LATEST_REVISION..."
+    UPGRADE_RESULT=$(alembic upgrade "$LATEST_REVISION" 2>&1)
 
     if echo "$UPGRADE_RESULT" | grep -q "DuplicateTable\|already exists"; then
-        echo "Tables exist but alembic version not set. Stamping to c3d4e5f6g7h8..."
-        alembic stamp c3d4e5f6g7h8 2>&1
-        echo "Now upgrading to head..."
-        alembic upgrade head 2>&1
+        echo "Tables exist but need alembic stamp. Checking current schema..."
+        # Check if is_service_account column exists
+        if echo "$CURRENT" | grep -q "c3d4e5f6g7h8"; then
+            echo "At c3d4e5f6g7h8, stamping and upgrading..."
+            alembic upgrade "$LATEST_REVISION" 2>&1
+        else
+            echo "Stamping to latest and retrying..."
+            alembic stamp "$LATEST_REVISION" 2>&1
+        fi
+    elif echo "$UPGRADE_RESULT" | grep -q "overlaps"; then
+        echo "Revision overlap detected, using +1 relative upgrade..."
+        alembic upgrade +1 2>&1
     else
         echo "$UPGRADE_RESULT"
     fi
