@@ -3,21 +3,19 @@
 ## CRITICAL RULES - DO NOT VIOLATE
 
 1. **NEVER delete or modify production data** without explicit user confirmation
-2. **Production uses PostgreSQL** on Coolify (`artemis-db` service) - not local SQLite
+2. **Production uses PostgreSQL** on Railway - not local SQLite
 3. The app auto-creates tables on startup via Alembic migrations
 
 ## Environments
 
-### Production (Rhea)
-- **URL**: https://artemis.meetrhea.com
-- **Database**: PostgreSQL on Coolify (TBD - needs manual creation)
-- **Deployed via**: Coolify (app uuid: `t8o840kw8sgoscog4w444ccg`)
+### Production (Railway)
+- **URL**: https://artemis.jettaintelligence.com
+- **Database**: PostgreSQL on Railway (shared with jetta-sso)
+- **Deployed via**: Railway (project: `amusing-generosity`)
 - **SSO**: Rhea SSO at https://login.meetrhea.com
 
-### Fork Relationship
-This is a fork of `aic-holdings/artemis`. It can evolve independently:
-- `origin` -> `meetrhea/artemis` (push changes here)
-- `upstream` -> `aic-holdings/artemis` (pull upstream updates when needed)
+### Repository
+- **Origin**: `aic-holdings/artemis` (main development repo)
 
 ### Local Development
 ```bash
@@ -59,12 +57,15 @@ Artemis is an AI Management Platform - a unified proxy for LLM API calls with us
 ```
 app/
   main.py          # FastAPI app, exception handlers
+  auth.py          # API key generation, JWT, encryption
   models.py        # SQLAlchemy models
   database.py      # DB connection
   routers/         # Route handlers
+    embeddings.py  # Vector embeddings endpoint
     whisper.py     # Whisper audio transcription
-    proxy_routes.py # LLM API proxy
+    proxy_routes.py # LLM API proxy (catch-all, must be last)
   services/        # Business logic
+    api_key_service.py  # API key CRUD
   templates/       # Jinja2 HTML templates
   static/          # CSS, JS assets
 ```
@@ -76,3 +77,67 @@ python scripts/seed_data.py
 ```
 
 This creates test users, organizations, groups, API keys, and usage data.
+
+## API Keys
+
+### Key Format
+Artemis API keys use the format: `art_<43-char-base64>`
+- Prefix: `art_`
+- Random part: 32-byte URL-safe base64 via `secrets.token_urlsafe(32)`
+- Example: `art_oTw6IjUMWz0iskHeNVXJHuZ61M5lnGQrPlr8bw1L044`
+
+### Storage (in `api_keys` table)
+- `key_hash`: SHA256 hex digest of full key (used for lookups)
+- `key_prefix`: First 12 chars for display (`art_` + 8 chars)
+- `encrypted_key`: Fernet-encrypted full key (allows reveal via UI)
+
+### Validation Flow
+1. API receives key in `Authorization: Bearer <key>` header
+2. Strips "Bearer " prefix if present
+3. Computes SHA256 hash of key
+4. Looks up `key_hash` in `api_keys` table
+5. Returns matching APIKey if found and not revoked
+
+### Creating Keys
+Keys must be created via Artemis UI or API - the `key_hash` must exist in the database. External secret stores (Knox, Infisical) can store the full key value, but the hash must be in Artemis DB for validation.
+
+### Key Hierarchy
+```
+Organization
+  └── Group
+        └── API Keys (belong to group)
+              └── Provider Key Overrides (optional per-key routing)
+```
+
+## Embeddings Endpoint
+
+### `/v1/embeddings` (POST)
+OpenAI-compatible embeddings endpoint with provider fallback.
+
+**Request:**
+```json
+{
+  "input": "text to embed",
+  "model": "text-embedding-3-small"
+}
+```
+
+**Fallback Order:** OpenRouter → OpenAI → Voyage → Ollama (local)
+
+**Response includes `_artemis` metadata:**
+```json
+{
+  "data": [...],
+  "_artemis": {
+    "provider": "openrouter",
+    "dimensions": 1536,
+    "latency_ms": 245
+  }
+}
+```
+
+### `/v1/embeddings/health` (GET)
+Check Ollama availability (no auth required).
+
+### `/v1/embeddings/providers` (GET)
+List available embedding providers and their status (requires auth).
