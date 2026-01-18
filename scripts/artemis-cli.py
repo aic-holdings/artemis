@@ -26,10 +26,21 @@ Commands:
     # Health
     artemis-cli.py health
 
-Environment Variables:
-    MASTER_API_KEY - Master key for admin operations
-    ARTEMIS_API_KEY - Your Artemis API key (art_xxx) for user operations
-    ARTEMIS_URL - Artemis server URL (default: https://artemis.jettaintelligence.com)
+Configuration:
+    Keys are loaded in order of precedence:
+    1. Environment variables (MASTER_API_KEY, ARTEMIS_API_KEY, ARTEMIS_URL)
+    2. Config file (~/.artemis/config.yaml)
+
+    Config file format (~/.artemis/config.yaml):
+        master_api_key: artemis_master_xxx
+        api_key: art_xxx
+        url: https://artemis.jettaintelligence.com
+
+    # Initialize config
+    artemis-cli.py config init
+    artemis-cli.py config set api_key art_xxx
+    artemis-cli.py config set master_api_key artemis_master_xxx
+    artemis-cli.py config show
 
 Examples:
     # Bootstrap: Create service account and add OpenRouter key
@@ -46,31 +57,116 @@ import argparse
 import json
 import os
 import sys
+from pathlib import Path
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 
+try:
+    import yaml
+    YAML_AVAILABLE = True
+except ImportError:
+    YAML_AVAILABLE = False
+
 
 DEFAULT_ARTEMIS_URL = "https://artemis.jettaintelligence.com"
+CONFIG_DIR = Path.home() / ".artemis"
+CONFIG_FILE = CONFIG_DIR / "config.yaml"
+
+
+def load_config():
+    """Load configuration from ~/.artemis/config.yaml."""
+    if not CONFIG_FILE.exists():
+        return {}
+
+    if not YAML_AVAILABLE:
+        # Fallback: simple key: value parsing
+        config = {}
+        with open(CONFIG_FILE) as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and ":" in line:
+                    key, value = line.split(":", 1)
+                    config[key.strip()] = value.strip()
+        return config
+
+    with open(CONFIG_FILE) as f:
+        return yaml.safe_load(f) or {}
+
+
+def save_config(config: dict):
+    """Save configuration to ~/.artemis/config.yaml."""
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+
+    if YAML_AVAILABLE:
+        with open(CONFIG_FILE, "w") as f:
+            yaml.dump(config, f, default_flow_style=False)
+    else:
+        with open(CONFIG_FILE, "w") as f:
+            for key, value in config.items():
+                f.write(f"{key}: {value}\n")
+
+    # Secure permissions (owner read/write only)
+    CONFIG_FILE.chmod(0o600)
 
 
 def get_master_key():
-    """Get master API key from environment."""
+    """Get master API key from environment or config file."""
+    # 1. Check environment variable
     key = os.environ.get("MASTER_API_KEY")
-    if not key:
-        print("Error: MASTER_API_KEY environment variable not set", file=sys.stderr)
-        print("Set it with: export MASTER_API_KEY=your_master_key", file=sys.stderr)
-        sys.exit(1)
-    return key
+    if key:
+        return key
+
+    # 2. Check config file
+    config = load_config()
+    key = config.get("master_api_key")
+    if key:
+        return key
+
+    print("Error: MASTER_API_KEY not found", file=sys.stderr)
+    print("Set it with:", file=sys.stderr)
+    print("  export MASTER_API_KEY=your_master_key", file=sys.stderr)
+    print("  or: artemis-cli.py config set master_api_key your_master_key", file=sys.stderr)
+    sys.exit(1)
 
 
 def get_api_key():
-    """Get API key from environment."""
+    """Get API key from environment or config file."""
+    # 1. Check environment variable
     key = os.environ.get("ARTEMIS_API_KEY")
-    if not key:
-        print("Error: ARTEMIS_API_KEY environment variable not set", file=sys.stderr)
-        print("Set it with: export ARTEMIS_API_KEY=art_your_key_here", file=sys.stderr)
-        sys.exit(1)
-    return key
+    if key:
+        return key
+
+    # 2. Check config file
+    config = load_config()
+    key = config.get("api_key")
+    if key:
+        return key
+
+    print("Error: ARTEMIS_API_KEY not found", file=sys.stderr)
+    print("Set it with:", file=sys.stderr)
+    print("  export ARTEMIS_API_KEY=art_your_key_here", file=sys.stderr)
+    print("  or: artemis-cli.py config set api_key art_your_key_here", file=sys.stderr)
+    sys.exit(1)
+
+
+def get_artemis_url(args_url: str = None):
+    """Get Artemis URL from args, environment, or config file."""
+    # 1. Command line argument
+    if args_url and args_url != DEFAULT_ARTEMIS_URL:
+        return args_url
+
+    # 2. Environment variable
+    url = os.environ.get("ARTEMIS_URL")
+    if url:
+        return url
+
+    # 3. Config file
+    config = load_config()
+    url = config.get("url")
+    if url:
+        return url
+
+    return DEFAULT_ARTEMIS_URL
 
 
 def api_request(method: str, endpoint: str, artemis_url: str, data: dict = None,
@@ -373,6 +469,129 @@ def cmd_embeddings_providers(args):
 
 
 # =============================================================================
+# Config Commands
+# =============================================================================
+
+def cmd_config_init(args):
+    """Initialize config directory and file."""
+    if CONFIG_FILE.exists():
+        print(f"Config file already exists: {CONFIG_FILE}")
+        config = load_config()
+        if config:
+            print("Current settings:")
+            for key, value in config.items():
+                # Mask sensitive values
+                if "key" in key.lower() and value:
+                    masked = value[:12] + "..." if len(value) > 12 else "***"
+                    print(f"  {key}: {masked}")
+                else:
+                    print(f"  {key}: {value}")
+        return
+
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    save_config({
+        "# Artemis CLI Configuration": "",
+        "url": DEFAULT_ARTEMIS_URL,
+        "# api_key": "art_your_key_here",
+        "# master_api_key": "artemis_master_xxx",
+    })
+    print(f"✓ Created config directory: {CONFIG_DIR}")
+    print(f"✓ Created config file: {CONFIG_FILE}")
+    print(f"\nEdit the file to add your API keys, or use:")
+    print(f"  artemis-cli.py config set api_key art_xxx")
+    print(f"  artemis-cli.py config set master_api_key artemis_master_xxx")
+
+
+def cmd_config_show(args):
+    """Show current configuration."""
+    config = load_config()
+
+    if not config:
+        print(f"No config file found at {CONFIG_FILE}")
+        print("Run 'artemis-cli.py config init' to create one")
+        return
+
+    if args.json:
+        # Mask keys in JSON output
+        masked = {}
+        for key, value in config.items():
+            if "key" in key.lower() and value and not key.startswith("#"):
+                masked[key] = value[:12] + "..." if len(value) > 12 else "***"
+            else:
+                masked[key] = value
+        print(json.dumps(masked, indent=2))
+        return
+
+    print(f"Config file: {CONFIG_FILE}")
+    print("-" * 50)
+    for key, value in config.items():
+        if key.startswith("#"):
+            continue
+        if "key" in key.lower() and value:
+            masked = value[:12] + "..." if len(value) > 12 else "***"
+            print(f"  {key}: {masked}")
+        else:
+            print(f"  {key}: {value}")
+
+    # Show effective values (including env vars)
+    print("\nEffective values (env vars override config):")
+    print(f"  ARTEMIS_URL: {get_artemis_url()}")
+    if os.environ.get("ARTEMIS_API_KEY"):
+        print(f"  ARTEMIS_API_KEY: (from environment)")
+    elif config.get("api_key"):
+        print(f"  ARTEMIS_API_KEY: (from config)")
+    else:
+        print(f"  ARTEMIS_API_KEY: (not set)")
+
+    if os.environ.get("MASTER_API_KEY"):
+        print(f"  MASTER_API_KEY: (from environment)")
+    elif config.get("master_api_key"):
+        print(f"  MASTER_API_KEY: (from config)")
+    else:
+        print(f"  MASTER_API_KEY: (not set)")
+
+
+def cmd_config_set(args):
+    """Set a configuration value."""
+    config = load_config()
+    config[args.key] = args.value
+    save_config(config)
+
+    # Mask the value for display
+    if "key" in args.key.lower():
+        display_value = args.value[:12] + "..." if len(args.value) > 12 else "***"
+    else:
+        display_value = args.value
+
+    print(f"✓ Set {args.key} = {display_value}")
+    print(f"  Saved to {CONFIG_FILE}")
+
+
+def cmd_config_get(args):
+    """Get a configuration value."""
+    config = load_config()
+    value = config.get(args.key)
+
+    if value is None:
+        print(f"Key '{args.key}' not found in config")
+        sys.exit(1)
+
+    if args.raw:
+        print(value)
+    else:
+        if "key" in args.key.lower():
+            display_value = value[:12] + "..." if len(value) > 12 else "***"
+        else:
+            display_value = value
+        print(f"{args.key}: {display_value}")
+
+
+def cmd_config_path(args):
+    """Show config file path."""
+    print(CONFIG_FILE)
+
+
+# =============================================================================
 # Health Command
 # =============================================================================
 
@@ -503,6 +722,36 @@ def main():
     # embeddings providers
     emb_prov = emb_subparsers.add_parser("providers", help="List embedding providers")
     emb_prov.set_defaults(func=cmd_embeddings_providers)
+
+    # ==========================================================================
+    # Config commands
+    # ==========================================================================
+    config_parser = subparsers.add_parser("config", help="Manage local configuration")
+    config_subparsers = config_parser.add_subparsers(dest="config_command", required=True)
+
+    # config init
+    config_init = config_subparsers.add_parser("init", help="Initialize config file")
+    config_init.set_defaults(func=cmd_config_init)
+
+    # config show
+    config_show = config_subparsers.add_parser("show", help="Show current configuration")
+    config_show.set_defaults(func=cmd_config_show)
+
+    # config set
+    config_set = config_subparsers.add_parser("set", help="Set a configuration value")
+    config_set.add_argument("key", help="Config key (api_key, master_api_key, url)")
+    config_set.add_argument("value", help="Config value")
+    config_set.set_defaults(func=cmd_config_set)
+
+    # config get
+    config_get = config_subparsers.add_parser("get", help="Get a configuration value")
+    config_get.add_argument("key", help="Config key to get")
+    config_get.add_argument("--raw", action="store_true", help="Output raw value (for scripts)")
+    config_get.set_defaults(func=cmd_config_get)
+
+    # config path
+    config_path = config_subparsers.add_parser("path", help="Show config file path")
+    config_path.set_defaults(func=cmd_config_path)
 
     # ==========================================================================
     # Health command
