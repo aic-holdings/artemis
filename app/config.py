@@ -38,6 +38,9 @@ class Settings:
     # This bypasses normal auth and should be kept secure
     MASTER_API_KEY: str = os.getenv("MASTER_API_KEY", "")
 
+    # Ollama settings - disabled by default, enable for local dev with Ollama
+    OLLAMA_ENABLED: bool = os.getenv("OLLAMA_ENABLED", "false").lower() == "true"
+
     # Provider base URLs
     PROVIDER_URLS = {
         "openai": "https://api.openai.com",

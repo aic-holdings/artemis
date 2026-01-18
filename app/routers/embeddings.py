@@ -20,6 +20,7 @@ from sqlalchemy.orm import selectinload
 from app.database import get_db
 from app.auth import decrypt_api_key
 from app.models import APIKey, ProviderKey, ProviderAccount, UsageLog
+from app.config import settings
 
 router = APIRouter()
 
@@ -55,8 +56,15 @@ EMBEDDING_PROVIDERS = {
     },
 }
 
-# Provider fallback order - local first, then cloud
-EMBEDDING_FALLBACK_ORDER = ["openrouter", "openai", "voyage", "ollama"]
+# Provider fallback order - cloud providers, ollama only if enabled
+def get_fallback_order():
+    """Get embedding fallback order based on configuration."""
+    order = ["openrouter", "openai", "voyage"]
+    if settings.OLLAMA_ENABLED:
+        order.append("ollama")
+    return order
+
+EMBEDDING_FALLBACK_ORDER = get_fallback_order()
 
 
 class EmbedRequest(BaseModel):
@@ -412,7 +420,18 @@ async def list_embedding_providers(
 
 @router.get("/v1/embeddings/health")
 async def embedding_health():
-    """Check if local Ollama is available."""
+    """Check embeddings health status."""
+    # If Ollama is disabled, report healthy with cloud-only mode
+    if not settings.OLLAMA_ENABLED:
+        return {
+            "status": "healthy",
+            "mode": "cloud",
+            "ollama": "disabled",
+            "providers": ["openrouter", "openai", "voyage"],
+            "message": "Using cloud embedding providers",
+        }
+
+    # Check local Ollama availability
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
             response = await client.get("http://localhost:11434/api/tags")
@@ -421,14 +440,16 @@ async def embedding_health():
                 embed_models = [m["name"] for m in models if "embed" in m["name"].lower()]
                 return {
                     "status": "healthy",
+                    "mode": "hybrid",
                     "ollama": "connected",
                     "embedding_models": embed_models,
                 }
-    except Exception as e:
+    except Exception:
         pass
 
     return {
         "status": "degraded",
+        "mode": "hybrid",
         "ollama": "unreachable",
         "message": "Local Ollama unavailable, will fallback to cloud providers",
     }
