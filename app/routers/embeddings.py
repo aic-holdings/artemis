@@ -25,6 +25,13 @@ router = APIRouter()
 
 # Embedding provider configuration
 EMBEDDING_PROVIDERS = {
+    "openrouter": {
+        "name": "OpenRouter",
+        "base_url": "https://openrouter.ai/api/v1",
+        "auth_type": "bearer",
+        "model": "openai/text-embedding-3-small",
+        "dimensions": 1536,
+    },
     "ollama": {
         "name": "Local Ollama",
         "base_url": "http://localhost:11434",
@@ -49,7 +56,7 @@ EMBEDDING_PROVIDERS = {
 }
 
 # Provider fallback order - local first, then cloud
-EMBEDDING_FALLBACK_ORDER = ["ollama", "openai", "voyage"]
+EMBEDDING_FALLBACK_ORDER = ["openrouter", "openai", "voyage", "ollama"]
 
 
 class EmbedRequest(BaseModel):
