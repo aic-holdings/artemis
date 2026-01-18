@@ -1,140 +1,183 @@
-import pytest
-import asyncio
+"""Pytest fixtures for Artemis CLI tests."""
+import json
 import os
-from httpx import AsyncClient, ASGITransport
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+import sys
+from pathlib import Path
+from typing import Generator
+from unittest.mock import MagicMock, patch
 
-# Disable localhost mode for tests BEFORE importing app
-os.environ["LOCALHOST_MODE"] = "false"
+import pytest
+from typer.testing import CliRunner
 
-from app.main import app
-from app.database import Base, get_db
-from app.config import settings
+# Add scripts directory to path for imports
+scripts_dir = Path(__file__).parent.parent / "scripts"
+sys.path.insert(0, str(scripts_dir))
 
-# Ensure localhost mode is disabled at runtime as well
-settings.LOCALHOST_MODE = False
-
-
-# Use in-memory SQLite for tests
-TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
-
-
-@pytest.fixture(scope="session")
-def event_loop():
-    """Create an event loop for the test session."""
-    loop = asyncio.get_event_loop_policy().new_event_loop()
-    yield loop
-    loop.close()
+from artemis_cli.cli import app
 
 
 @pytest.fixture
-async def test_db():
-    """Create a fresh test database for each test."""
-    engine = create_async_engine(TEST_DATABASE_URL, echo=False)
-    async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    async def override_get_db():
-        async with async_session() as session:
-            yield session
-
-    app.dependency_overrides[get_db] = override_get_db
-
-    yield async_session
-
-    app.dependency_overrides.clear()
-
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
-
-    await engine.dispose()
+def cli_runner() -> CliRunner:
+    """Create a CliRunner for testing Typer commands."""
+    return CliRunner(mix_stderr=False)
 
 
 @pytest.fixture
-async def client(test_db):
-    """Create an async test client."""
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as ac:
-        yield ac
+def temp_config(tmp_path: Path, monkeypatch) -> Path:
+    """Create temporary config directory for testing.
+
+    Patches CONFIG_DIR and CONFIG_FILE to use temp directory.
+    """
+    config_dir = tmp_path / ".artemis"
+    config_dir.mkdir()
+    config_file = config_dir / "config.yaml"
+
+    # Patch the config paths in both api and cli modules
+    monkeypatch.setattr("artemis_cli.api.CONFIG_DIR", config_dir)
+    monkeypatch.setattr("artemis_cli.api.CONFIG_FILE", config_file)
+    monkeypatch.setattr("artemis_cli.cli.CONFIG_DIR", config_dir)
+    monkeypatch.setattr("artemis_cli.cli.CONFIG_FILE", config_file)
+
+    return config_dir
 
 
 @pytest.fixture
-async def authenticated_client(client, test_db):
-    """Create an authenticated test client with organization and group."""
-    # Register a user
-    response = await client.post(
-        "/register",
-        data={"email": "testuser@example.com", "password": "testpassword123"},
-        follow_redirects=False,
-    )
+def mock_api():
+    """Mock API requests.
 
-    # Get session cookie
-    cookies = response.cookies
-    client.cookies = cookies
+    Yields a mock that can be configured to return specific responses.
 
-    # Create organization and group for the test user
-    # This is needed because provider keys now require a group context
-    async with test_db() as session:
-        from sqlalchemy import select
-        from app.models import User, Organization, Group, GroupMember, Provider
+    Example:
+        def test_something(mock_api):
+            mock_api.return_value = {"status": "ok"}
+            # ... test code ...
+    """
+    with patch("artemis_cli.cli._api_request") as mock:
+        yield mock
 
-        # Get the user
-        result = await session.execute(
-            select(User).where(User.email == "testuser@example.com")
-        )
-        user = result.scalar_one()
 
-        # Create organization
-        org = Organization(name="Test Organization", owner_id=user.id)
-        session.add(org)
-        await session.commit()
-        await session.refresh(org)
+@pytest.fixture
+def mock_api_module():
+    """Mock the entire api module's api_request function.
 
-        # Create default group
-        group = Group(
-            organization_id=org.id,
-            name="Default",
-            is_default=True,
-            created_by_id=user.id
-        )
-        session.add(group)
-        await session.commit()
-        await session.refresh(group)
+    Use this for testing CLI commands that catch and handle APIError.
+    """
+    with patch("artemis_cli.api.api_request") as mock:
+        yield mock
 
-        # Add user as group member (admin)
-        member = GroupMember(
-            group_id=group.id,
-            user_id=user.id,
-            role="admin"
-        )
-        session.add(member)
 
-        # Update user's organization and settings
-        user.organization_id = org.id
-        user.settings = {
-            "last_org_id": org.id,
-            "last_group_id": group.id
+@pytest.fixture
+def env_api_key(monkeypatch):
+    """Set ARTEMIS_API_KEY environment variable."""
+    monkeypatch.setenv("ARTEMIS_API_KEY", "art_test_key_for_testing")
+    return "art_test_key_for_testing"
+
+
+@pytest.fixture
+def env_master_key(monkeypatch):
+    """Set MASTER_API_KEY environment variable."""
+    monkeypatch.setenv("MASTER_API_KEY", "test_master_key")
+    return "test_master_key"
+
+
+@pytest.fixture
+def env_url(monkeypatch):
+    """Set ARTEMIS_URL environment variable."""
+    monkeypatch.setenv("ARTEMIS_URL", "http://localhost:8767")
+    return "http://localhost:8767"
+
+
+@pytest.fixture
+def clean_env(monkeypatch):
+    """Remove all Artemis environment variables."""
+    monkeypatch.delenv("ARTEMIS_API_KEY", raising=False)
+    monkeypatch.delenv("ARTEMIS_URL", raising=False)
+    monkeypatch.delenv("MASTER_API_KEY", raising=False)
+
+
+# Common mock responses
+@pytest.fixture
+def mock_service_account_response():
+    """Standard service account creation response."""
+    return {
+        "service_account": {
+            "id": "sa-123",
+            "name": "test-service",
+            "created_at": "2024-01-01T00:00:00Z"
+        },
+        "group": {
+            "id": "group-456",
+            "name": "test-service-group"
+        },
+        "api_key": {
+            "id": "key-789",
+            "key": "art_test_generated_key_abc123",
+            "key_prefix": "art_test_gen"
         }
-        await session.commit()
+    }
 
-        # Create provider records
-        providers = [
-            Provider(id="openai", name="OpenAI"),
-            Provider(id="anthropic", name="Anthropic"),
-            Provider(id="google", name="Google"),
-            Provider(id="perplexity", name="Perplexity"),
-            Provider(id="openrouter", name="OpenRouter"),
-            Provider(id="v0", name="v0 (Vercel)"),
+
+@pytest.fixture
+def mock_accounts_list_response():
+    """Standard service accounts list response."""
+    return {
+        "service_accounts": [
+            {
+                "id": "sa-1",
+                "name": "service-one",
+                "created_at": "2024-01-01T00:00:00Z"
+            },
+            {
+                "id": "sa-2",
+                "name": "service-two",
+                "created_at": "2024-01-02T00:00:00Z"
+            }
         ]
-        for provider in providers:
-            # Check if provider already exists
-            existing = await session.execute(
-                select(Provider).where(Provider.id == provider.id)
-            )
-            if not existing.scalar_one_or_none():
-                session.add(provider)
-        await session.commit()
+    }
 
-    yield client
+
+@pytest.fixture
+def mock_embedding_response():
+    """Standard embedding response."""
+    return {
+        "object": "list",
+        "model": "text-embedding-3-small",
+        "data": [
+            {
+                "object": "embedding",
+                "index": 0,
+                "embedding": [0.1] * 1536
+            }
+        ],
+        "usage": {
+            "prompt_tokens": 2,
+            "total_tokens": 2
+        },
+        "_artemis": {
+            "provider": "openrouter",
+            "dimensions": 1536,
+            "latency_ms": 123
+        }
+    }
+
+
+@pytest.fixture
+def mock_health_response():
+    """Standard health check response."""
+    return {
+        "status": "healthy",
+        "service": "artemis",
+        "version": "1.0.0"
+    }
+
+
+@pytest.fixture
+def mock_embeddings_health_response():
+    """Standard embeddings health response."""
+    return {
+        "status": "healthy",
+        "mode": "cloud",
+        "ollama": "disabled",
+        "providers": ["openrouter", "openai", "voyage"],
+        "message": "Using cloud embedding providers"
+    }

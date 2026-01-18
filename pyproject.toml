@@ -1,0 +1,31 @@
+[project]
+name = "artemis"
+version = "1.0.0"
+description = "AI Management Platform - unified proxy for LLM API calls"
+requires-python = ">=3.10"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+addopts = [
+    "-v",
+    "--tb=short",
+    "--strict-markers",
+]
+markers = [
+    "integration: marks tests as integration tests (requires running server)",
+]
+
+[tool.coverage.run]
+source = ["scripts/artemis_cli"]
+branch = true
+omit = ["tests/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+]
+show_missing = true

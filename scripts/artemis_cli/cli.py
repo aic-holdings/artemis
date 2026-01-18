@@ -14,11 +14,25 @@ import sys
 from pathlib import Path
 from typing import Optional
 from urllib.request import Request, urlopen
-from urllib.error import HTTPError, URLError
 
 import typer
 from rich.console import Console
 from rich.table import Table
+
+from artemis_cli.api import (
+    api_request as _api_request,
+    load_config,
+    save_config,
+    get_url,
+    get_api_key,
+    get_master_key,
+    APIError,
+    ConfigError,
+    ConnectionError,
+    CONFIG_DIR,
+    CONFIG_FILE,
+    DEFAULT_URL,
+)
 
 # Initialize Typer apps
 app = typer.Typer(
@@ -40,94 +54,20 @@ app.add_typer(config_app, name="config")
 console = Console()
 err_console = Console(stderr=True)
 
-# Config
-DEFAULT_URL = "https://artemis.jettaintelligence.com"
-CONFIG_DIR = Path.home() / ".artemis"
-CONFIG_FILE = CONFIG_DIR / "config.yaml"
-
-
-# =============================================================================
-# Config Helpers
-# =============================================================================
-
-def load_config() -> dict:
-    """Load config from ~/.artemis/config.yaml."""
-    if not CONFIG_FILE.exists():
-        return {}
-    config = {}
-    with open(CONFIG_FILE) as f:
-        for line in f:
-            line = line.strip()
-            if line and not line.startswith("#") and ":" in line:
-                key, value = line.split(":", 1)
-                config[key.strip()] = value.strip()
-    return config
-
-
-def save_config(config: dict):
-    """Save config to ~/.artemis/config.yaml."""
-    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    with open(CONFIG_FILE, "w") as f:
-        for key, value in config.items():
-            f.write(f"{key}: {value}\n")
-    CONFIG_FILE.chmod(0o600)
-
-
-def get_url() -> str:
-    """Get Artemis URL from env or config."""
-    import os
-    return os.environ.get("ARTEMIS_URL") or load_config().get("url") or DEFAULT_URL
-
-
-def get_api_key() -> str:
-    """Get API key from env or config."""
-    import os
-    key = os.environ.get("ARTEMIS_API_KEY") or load_config().get("api_key")
-    if not key:
-        err_console.print("[red]Error:[/red] ARTEMIS_API_KEY not found")
-        err_console.print("Set with: [cyan]export ARTEMIS_API_KEY=art_xxx[/cyan]")
-        err_console.print("Or: [cyan]artemis config set api_key art_xxx[/cyan]")
-        raise typer.Exit(1)
-    return key
-
-
-def get_master_key() -> str:
-    """Get master API key from env or config."""
-    import os
-    key = os.environ.get("MASTER_API_KEY") or load_config().get("master_api_key")
-    if not key:
-        err_console.print("[red]Error:[/red] MASTER_API_KEY not found")
-        err_console.print("Set with: [cyan]export MASTER_API_KEY=xxx[/cyan]")
-        err_console.print("Or: [cyan]artemis config set master_api_key xxx[/cyan]")
-        raise typer.Exit(1)
-    return key
-
 
 def api_request(method: str, endpoint: str, data: dict = None,
                 use_master: bool = False, timeout: int = 30) -> dict:
-    """Make API request to Artemis."""
-    url = f"{get_url().rstrip('/')}{endpoint}"
-    key = get_master_key() if use_master else get_api_key()
-
-    headers = {
-        "Authorization": f"Bearer {key}",
-        "Content-Type": "application/json",
-    }
-    body = json.dumps(data).encode() if data else None
-    req = Request(url, data=body, headers=headers, method=method)
-
+    """Make API request with CLI error handling."""
     try:
-        with urlopen(req, timeout=timeout) as resp:
-            return json.loads(resp.read().decode())
-    except HTTPError as e:
-        try:
-            error = json.loads(e.read().decode())
-            err_console.print(f"[red]Error {e.code}:[/red] {error.get('detail', str(error))}")
-        except:
-            err_console.print(f"[red]Error {e.code}[/red]")
+        return _api_request(method, endpoint, data, use_master, timeout)
+    except APIError as e:
+        err_console.print(f"[red]Error {e.status_code}:[/red] {e.detail}")
         raise typer.Exit(1)
-    except URLError as e:
-        err_console.print(f"[red]Connection error:[/red] {e.reason}")
+    except ConfigError as e:
+        err_console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+    except ConnectionError as e:
+        err_console.print(f"[red]{e}[/red]")
         raise typer.Exit(1)
 
 

@@ -1,1 +1,1 @@
-# Tests package
+"""Artemis CLI tests."""
