@@ -333,6 +333,40 @@ def extract_usage_from_response(provider: str, response_data: dict) -> tuple[str
     return model, input_tokens, output_tokens
 
 
+# ============================================================================
+# Claude SDK Compatibility Endpoint
+# ============================================================================
+# The Claude Agent SDK expects to POST to {base_url}/v1/messages
+# This endpoint provides that interface, routing through OpenRouter
+# ============================================================================
+
+@router.api_route("/v1/messages", methods=["POST"])
+async def anthropic_messages_endpoint(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Anthropic Messages API compatible endpoint for Claude SDK.
+
+    The Claude Agent SDK expects to call /v1/messages directly.
+    This endpoint routes those requests through OpenRouter, which supports
+    the Anthropic Messages API format.
+
+    Usage:
+        ANTHROPIC_BASE_URL=https://artemis.jettaintelligence.com
+        ANTHROPIC_AUTH_TOKEN=art_xxx
+        ANTHROPIC_API_KEY=art_xxx  # Required non-empty for SDK
+    """
+    # Route through OpenRouter with messages path
+    # Reuse the main proxy logic by calling it directly
+    return await proxy_request(
+        provider="openrouter",
+        path="messages",
+        request=request,
+        db=db,
+    )
+
+
 @router.api_route("/v1/{provider}/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
 async def proxy_request(
     provider: str,
@@ -406,6 +440,7 @@ async def proxy_request(
     is_streaming = False
     app_id = None
     end_user_id = None
+    body_modified = False
 
     if body:
         try:
@@ -415,6 +450,25 @@ async def proxy_request(
             metadata = body_json.get("metadata", {})
             app_id = metadata.get("app_id") or body_json.get("app_id")
             end_user_id = metadata.get("user_id") or body_json.get("user")
+
+            # Handle web search convenience header for OpenRouter
+            # X-Artemis-Web-Search: true enables web search
+            # X-Artemis-Web-Results: N sets max results (default 5)
+            if provider == "openrouter":
+                web_search_header = request.headers.get("x-artemis-web-search", "").lower()
+                if web_search_header in ("true", "1", "yes"):
+                    web_results = int(request.headers.get("x-artemis-web-results", "5"))
+                    web_results = max(1, min(10, web_results))  # Clamp to 1-10
+                    # Add web search plugin if not already present
+                    if "plugins" not in body_json:
+                        body_json["plugins"] = []
+                    # Check if web plugin already exists
+                    has_web = any(p.get("id") == "web" for p in body_json.get("plugins", []))
+                    if not has_web:
+                        body_json["plugins"].append({"id": "web", "max_results": web_results})
+                        body = json.dumps(body_json).encode()
+                        body_modified = True
+
         except json.JSONDecodeError:
             pass
 
