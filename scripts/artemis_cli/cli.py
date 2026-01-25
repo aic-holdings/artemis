@@ -44,11 +44,17 @@ admin_app = typer.Typer(help="Admin commands (requires MASTER_API_KEY)")
 keys_app = typer.Typer(help="API key management")
 embeddings_app = typer.Typer(help="Embeddings operations")
 config_app = typer.Typer(help="Manage local configuration (~/.artemis)")
+proxy_app = typer.Typer(help="LLM proxy operations")
+models_app = typer.Typer(help="Model management")
+whisper_app = typer.Typer(help="Audio transcription (Whisper)")
 
 app.add_typer(admin_app, name="admin")
 app.add_typer(keys_app, name="keys")
 app.add_typer(embeddings_app, name="embeddings")
 app.add_typer(config_app, name="config")
+app.add_typer(proxy_app, name="proxy")
+app.add_typer(models_app, name="models")
+app.add_typer(whisper_app, name="whisper")
 
 # Rich console for colored output
 console = Console()
@@ -498,6 +504,352 @@ def health(
 def version():
     """Show CLI version."""
     console.print("artemis-cli [cyan]v2.0.0[/cyan] (Typer)")
+
+
+# =============================================================================
+# Proxy Commands
+# =============================================================================
+
+@proxy_app.command("test")
+def proxy_test(
+    prompt: str = typer.Argument("Say hello in exactly 5 words.", help="Prompt to send"),
+    model: str = typer.Option("openai/gpt-4o-mini", "--model", "-m", help="Model to use"),
+    provider: str = typer.Option("openrouter", "--provider", "-p", help="Provider (openrouter, openai, anthropic)"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show full response"),
+):
+    """Test LLM proxy with a simple prompt.
+
+    Example: artemis proxy test "What is 2+2?"
+    Example: artemis proxy test "Hello" --model anthropic/claude-3-haiku
+    """
+    data = {
+        "model": model,
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": 100,
+    }
+
+    console.print(f"[dim]Sending to {provider}/{model}...[/dim]")
+
+    try:
+        result = api_request("POST", f"/v1/{provider}/chat/completions", data, timeout=60)
+    except Exception:
+        raise
+
+    choices = result.get("choices", [])
+    if not choices:
+        err_console.print("[red]Error:[/red] No response from model")
+        raise typer.Exit(1)
+
+    message = choices[0].get("message", {})
+    content = message.get("content", "")
+    usage = result.get("usage", {})
+    meta = result.get("_artemis", {})
+
+    console.print(f"[green]✓[/green] Response received")
+    console.print(f"  Model: [cyan]{result.get('model')}[/cyan]")
+    console.print(f"  Provider: [cyan]{meta.get('provider', provider)}[/cyan]")
+    console.print(f"  Latency: [cyan]{meta.get('latency_ms', 'N/A')}ms[/cyan]")
+    console.print(f"  Tokens: [dim]in={usage.get('prompt_tokens', 'N/A')} out={usage.get('completion_tokens', 'N/A')}[/dim]")
+    console.print(f"\n[bold]Response:[/bold] {content}")
+
+    if verbose:
+        console.print(f"\n[dim]Full response:[/dim]")
+        console.print(json.dumps(result, indent=2))
+
+
+# =============================================================================
+# Models Commands
+# =============================================================================
+
+@models_app.command("list")
+def models_list(
+    provider: str = typer.Option(None, "--provider", "-p", help="Filter by provider"),
+    as_json: bool = typer.Option(False, "--json", help="Output as JSON"),
+):
+    """List available models.
+
+    Example: artemis models list
+    Example: artemis models list --provider openai
+    """
+    if provider:
+        result = api_request("GET", f"/api/v1/providers/{provider}/models")
+        models = result.get("models", [])
+    else:
+        result = api_request("GET", "/v1/models")
+        models = result.get("models", result.get("data", []))
+
+    if as_json:
+        console.print(json.dumps(result, indent=2))
+        return
+
+    if not models:
+        console.print("No models found.")
+        return
+
+    table = Table()
+    table.add_column("Model", style="cyan")
+    table.add_column("Provider")
+    table.add_column("Context", justify="right")
+
+    for m in models[:50]:  # Limit display
+        model_id = m.get("id", m.get("model_id", ""))
+        prov = m.get("provider", m.get("provider_name", model_id.split("/")[0] if "/" in model_id else ""))
+        context = m.get("context_window", m.get("context_length", ""))
+        table.add_row(model_id, prov, str(context) if context else "")
+
+    console.print(table)
+    if len(models) > 50:
+        console.print(f"\n[dim]Showing 50 of {len(models)} models. Use --json for full list.[/dim]")
+
+
+@models_app.command("pricing")
+def models_pricing(
+    provider: str = typer.Argument(..., help="Provider name (openai, anthropic, etc.)"),
+    model: str = typer.Argument(..., help="Model name"),
+):
+    """Show pricing for a specific model.
+
+    Example: artemis models pricing openai gpt-4o
+    Example: artemis models pricing anthropic claude-3-opus
+    """
+    result = api_request("GET", f"/api/model-pricing/{provider}/{model}")
+
+    if not result:
+        console.print(f"[yellow]No pricing found for {provider}/{model}[/yellow]")
+        return
+
+    console.print(f"[bold]Pricing: {provider}/{model}[/bold]\n")
+    console.print(f"  Input:  [cyan]${result.get('input_cost', 0):.4f}[/cyan] / 1K tokens")
+    console.print(f"  Output: [cyan]${result.get('output_cost', 0):.4f}[/cyan] / 1K tokens")
+
+    if result.get("context_length"):
+        console.print(f"  Context: [dim]{result.get('context_length')} tokens[/dim]")
+
+
+# =============================================================================
+# Whisper Commands
+# =============================================================================
+
+@whisper_app.command("test")
+def whisper_test(
+    file_path: str = typer.Argument(..., help="Path to audio file (mp3, wav, m4a, etc.)"),
+    model: str = typer.Option("whisper-1", "--model", "-m", help="Whisper model"),
+    language: str = typer.Option(None, "--language", "-l", help="Language code (e.g., en, es)"),
+):
+    """Test audio transcription with Whisper.
+
+    Example: artemis whisper test audio.mp3
+    Example: artemis whisper test meeting.m4a --language en
+    """
+    import base64
+    from pathlib import Path as FilePath
+
+    audio_path = FilePath(file_path)
+    if not audio_path.exists():
+        err_console.print(f"[red]Error:[/red] File not found: {file_path}")
+        raise typer.Exit(1)
+
+    # Read and encode file
+    with open(audio_path, "rb") as f:
+        audio_data = f.read()
+
+    file_size_mb = len(audio_data) / (1024 * 1024)
+    console.print(f"[dim]Uploading {audio_path.name} ({file_size_mb:.1f} MB)...[/dim]")
+
+    # Build multipart form data manually using urllib
+    import mimetypes
+    from urllib.request import Request, urlopen
+    from urllib.error import HTTPError
+
+    boundary = "----ArtemisWhisperBoundary"
+    content_type = mimetypes.guess_type(file_path)[0] or "audio/mpeg"
+
+    body = []
+    # File field
+    body.append(f"--{boundary}".encode())
+    body.append(f'Content-Disposition: form-data; name="file"; filename="{audio_path.name}"'.encode())
+    body.append(f"Content-Type: {content_type}".encode())
+    body.append(b"")
+    body.append(audio_data)
+    # Model field
+    body.append(f"--{boundary}".encode())
+    body.append(b'Content-Disposition: form-data; name="model"')
+    body.append(b"")
+    body.append(model.encode())
+    # Language field (optional)
+    if language:
+        body.append(f"--{boundary}".encode())
+        body.append(b'Content-Disposition: form-data; name="language"')
+        body.append(b"")
+        body.append(language.encode())
+    body.append(f"--{boundary}--".encode())
+
+    body_bytes = b"\r\n".join(body)
+
+    url = f"{get_url().rstrip('/')}/v1/audio/transcriptions"
+    headers = {
+        "Authorization": f"Bearer {get_api_key()}",
+        "Content-Type": f"multipart/form-data; boundary={boundary}",
+    }
+
+    req = Request(url, data=body_bytes, headers=headers, method="POST")
+
+    try:
+        with urlopen(req, timeout=300) as resp:  # 5 min timeout for large files
+            result = json.loads(resp.read().decode())
+    except HTTPError as e:
+        try:
+            error = json.loads(e.read().decode())
+            detail = error.get("detail", str(error))
+        except:
+            detail = f"HTTP {e.code}"
+        err_console.print(f"[red]Error {e.code}:[/red] {detail}")
+        raise typer.Exit(1)
+
+    text = result.get("text", "")
+    meta = result.get("_artemis", {})
+
+    console.print(f"[green]✓[/green] Transcription complete")
+    console.print(f"  Model: [cyan]{model}[/cyan]")
+    console.print(f"  Provider: [cyan]{meta.get('provider', 'openai')}[/cyan]")
+    console.print(f"  Latency: [cyan]{meta.get('latency_ms', 'N/A')}ms[/cyan]")
+    console.print(f"  Duration: [dim]{meta.get('audio_duration', 'N/A')}s[/dim]")
+    console.print(f"\n[bold]Transcript:[/bold]\n{text}")
+
+
+@whisper_app.command("providers")
+def whisper_providers():
+    """List audio transcription providers.
+
+    Example: artemis whisper providers
+    """
+    result = api_request("GET", "/v1/audio/providers")
+    providers = result.get("providers", [])
+
+    if not providers:
+        console.print("No audio providers configured.")
+        return
+
+    table = Table()
+    table.add_column("Provider", style="cyan")
+    table.add_column("Model")
+    table.add_column("Has Key")
+
+    for p in providers:
+        has_key = "[green]Yes[/green]" if p.get("has_key") else "[red]No[/red]"
+        table.add_row(p.get("id"), p.get("model", "whisper-1"), has_key)
+
+    console.print(table)
+
+
+# =============================================================================
+# Usage/Status Commands
+# =============================================================================
+
+@app.command("usage")
+def usage_cmd(
+    as_json: bool = typer.Option(False, "--json", help="Output as JSON"),
+):
+    """Show usage statistics and budget.
+
+    Example: artemis usage
+    """
+    result = api_request("GET", "/v1/budget")
+
+    if as_json:
+        console.print(json.dumps(result, indent=2))
+        return
+
+    console.print("[bold]Usage Statistics[/bold]\n")
+
+    # Budget info
+    budget = result.get("budget", {})
+    if budget:
+        limit = budget.get("limit")
+        used = budget.get("used", 0)
+        remaining = budget.get("remaining")
+        console.print(f"  Budget Limit: [cyan]${limit:.2f}[/cyan]" if limit else "  Budget: [dim]Unlimited[/dim]")
+        console.print(f"  Used: [cyan]${used:.4f}[/cyan]")
+        if remaining is not None:
+            console.print(f"  Remaining: [cyan]${remaining:.2f}[/cyan]")
+
+    # Token usage
+    tokens = result.get("tokens", {})
+    if tokens:
+        console.print(f"\n  Input Tokens: [dim]{tokens.get('input', 0):,}[/dim]")
+        console.print(f"  Output Tokens: [dim]{tokens.get('output', 0):,}[/dim]")
+        console.print(f"  Total Tokens: [dim]{tokens.get('total', 0):,}[/dim]")
+
+    # Request counts
+    requests = result.get("requests", {})
+    if requests:
+        console.print(f"\n  Total Requests: [dim]{requests.get('total', 0):,}[/dim]")
+        console.print(f"  This Period: [dim]{requests.get('period', 0):,}[/dim]")
+
+
+@app.command("status")
+def status_cmd(
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show full details"),
+):
+    """Show detailed system status.
+
+    Example: artemis status
+    """
+    # Get basic health
+    url = f"{get_url().rstrip('/')}/health"
+    req = Request(url)
+
+    try:
+        with urlopen(req, timeout=10) as resp:
+            health = json.loads(resp.read().decode())
+    except Exception as e:
+        err_console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+
+    status = health.get("status", "unknown")
+    version = health.get("version", "?")
+    service = health.get("service", "artemis")
+
+    if status == "healthy":
+        console.print(f"[green]✓[/green] {service} v{version}: [green]{status}[/green]")
+    else:
+        console.print(f"[yellow]⚠[/yellow] {service} v{version}: [yellow]{status}[/yellow]")
+
+    # Get embeddings health
+    try:
+        emb_url = f"{get_url().rstrip('/')}/v1/embeddings/health"
+        emb_req = Request(emb_url)
+        with urlopen(emb_req, timeout=10) as resp:
+            emb_health = json.loads(resp.read().decode())
+        emb_status = emb_health.get("status", "unknown")
+        emb_mode = emb_health.get("mode", "unknown")
+        emb_icon = "[green]✓[/green]" if emb_status == "healthy" else "[yellow]⚠[/yellow]"
+        console.print(f"  {emb_icon} Embeddings: {emb_status} ({emb_mode})")
+    except Exception:
+        console.print(f"  [yellow]⚠[/yellow] Embeddings: unknown")
+
+    # Get providers info
+    try:
+        providers = api_request("GET", "/v1/embeddings/providers")
+        provider_list = providers.get("providers", [])
+        console.print(f"\n[bold]Embedding Providers:[/bold]")
+        for p in provider_list:
+            has_key = p.get("has_key", False)
+            icon = "[green]✓[/green]" if has_key else "[red]✗[/red]"
+            console.print(f"  {icon} {p.get('id')}: {'configured' if has_key else 'no key'}")
+    except Exception:
+        pass
+
+    # Show auth info
+    auth = health.get("auth", {})
+    if auth:
+        console.print(f"\n[bold]Auth:[/bold]")
+        console.print(f"  Provider: {auth.get('provider', 'unknown')}")
+        console.print(f"  SSO: {'enabled' if auth.get('sso_enabled') else 'disabled'}")
+
+    if verbose:
+        console.print(f"\n[dim]Health response:[/dim]")
+        console.print(json.dumps(health, indent=2))
 
 
 # =============================================================================
