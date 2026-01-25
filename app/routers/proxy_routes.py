@@ -564,15 +564,19 @@ async def proxy_request(
     )
 
     try:
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            if is_streaming:
-                return await handle_streaming_request(
-                    client, request, target_url, headers, body, provider,
-                    api_key, provider_key_id, app_id, end_user_id,
-                    start_time, request_id, request_log_id, request_log_service, db,
-                    log_full_content, request_model
-                )
-            else:
+        if is_streaming:
+            # For streaming, the client must be managed inside the generator
+            # to keep it alive until streaming completes
+            return handle_streaming_request(
+                timeout, request, target_url, headers, body, provider,
+                api_key, provider_key_id, app_id, end_user_id,
+                start_time, request_id, request_log_id, request_log_service, db,
+                log_full_content, request_model
+            )
+        else:
+            # For non-streaming, we can use a context manager since we
+            # consume the response fully before returning
+            async with httpx.AsyncClient(timeout=timeout) as client:
                 return await handle_non_streaming_request(
                     client, request, target_url, headers, body, provider,
                     api_key, provider_key_id, app_id, end_user_id,
@@ -737,8 +741,8 @@ async def proxy_request(
         )
 
 
-async def handle_streaming_request(
-    client: httpx.AsyncClient,
+def handle_streaming_request(
+    timeout: float,
     request: Request,
     target_url: str,
     headers: dict,
@@ -756,7 +760,13 @@ async def handle_streaming_request(
     log_full_content: bool = False,
     request_model: Optional[str] = None,
 ) -> StreamingResponse:
-    """Handle streaming request with error tracking."""
+    """Handle streaming request with error tracking.
+
+    Note: This function is NOT async because it returns a StreamingResponse
+    immediately. The actual async streaming happens inside the generator.
+    The httpx client is created INSIDE the generator to ensure it stays
+    alive for the duration of the stream (not closed prematurely).
+    """
 
     async def stream_and_log():
         accumulated_data = []
@@ -765,126 +775,128 @@ async def handle_streaming_request(
         error_message = None
         response_status_code = 200
 
-        try:
-            async with client.stream(
-                request.method,
-                target_url,
-                headers=headers,
-                content=body,
-            ) as response:
-                response_status_code = response.status_code
-                # Check for error response
-                if response.status_code >= 400:
-                    error_occurred = True
-                    error_content = await response.aread()
-                    error_message = f"HTTP {response.status_code}"
-                    try:
-                        error_json = json.loads(error_content)
-                        yield error_content
-                        return
-                    except json.JSONDecodeError:
-                        yield error_content
-                        return
-
-                async for chunk in response.aiter_bytes():
-                    yield chunk
-                    # Try to parse SSE data for usage info and content
-                    try:
-                        chunk_str = chunk.decode()
-                        for line in chunk_str.split("\n"):
-                            if line.startswith("data: ") and line != "data: [DONE]":
-                                data = json.loads(line[6:])
-                                accumulated_data.append(data)
-                                # Extract text content for full logging
-                                if log_full_content:
-                                    # OpenAI/compatible format
-                                    delta = data.get("choices", [{}])[0].get("delta", {})
-                                    content = delta.get("content")
-                                    if content:
-                                        accumulated_content.append(content)
-                    except (json.JSONDecodeError, UnicodeDecodeError):
-                        pass
-
-        except httpx.TimeoutException:
-            error_occurred = True
-            error_message = "Stream timed out"
-            error_response = json.dumps({
-                "error": {
-                    "message": f"{provider} stream timed out",
-                    "type": "timeout",
-                    "provider": provider,
-                    "request_id": request_id,
-                }
-            })
-            yield f"data: {error_response}\n\n".encode()
-
-        except Exception as e:
-            error_occurred = True
-            error_message = str(e)
-            error_response = json.dumps({
-                "error": {
-                    "message": f"Stream error: {str(e)}",
-                    "type": "stream_error",
-                    "provider": provider,
-                    "request_id": request_id,
-                }
-            })
-            yield f"data: {error_response}\n\n".encode()
-
-        finally:
-            # Log after stream completes
-            latency_ms = int((time.time() - start_time) * 1000)
-
-            if error_occurred:
-                provider_health.record_failure(provider, "stream_error", error_message or "Unknown", latency_ms)
-                # Log failure to DB
-                if request_log_id:
-                    try:
-                        await request_log_service.fail_request(
-                            request_log_id, "stream_error",
-                            error_message or "Unknown",
-                            status_code=response_status_code, latency_ms=latency_ms
-                        )
-                    except Exception:
-                        pass
-            else:
-                provider_health.record_success(provider, latency_ms)
-                # Log success to DB with full response if enabled
-                if request_log_id:
-                    try:
-                        resp_metadata = None
-                        if log_full_content and accumulated_content:
-                            resp_metadata = {"content": "".join(accumulated_content)}
-                        await request_log_service.complete_request(
-                            request_log_id, response_status_code, latency_ms,
-                            response_metadata=resp_metadata
-                        )
-                    except Exception:
-                        pass
-
-            # Extract model and usage from accumulated data
-            # Use response model if available, fallback to request model
-            model = request_model or "unknown"
-            if accumulated_data and "model" in accumulated_data[0]:
-                model = accumulated_data[0]["model"]
-
-            input_tokens = 0
-            output_tokens = 0
-            for chunk in reversed(accumulated_data):
-                if "usage" in chunk:
-                    input_tokens = chunk["usage"].get("prompt_tokens", 0)
-                    output_tokens = chunk["usage"].get("completion_tokens", 0)
-                    break
-
+        # Create client inside generator to keep it alive during streaming
+        async with httpx.AsyncClient(timeout=timeout) as client:
             try:
-                await log_usage(
-                    db, api_key.id, provider, model,
-                    input_tokens, output_tokens, latency_ms,
-                    provider_key_id=provider_key_id,
-                    app_id=app_id, end_user_id=end_user_id
-                )
-            except Exception as log_error:
-                logger.error(f"Failed to log usage: {log_error}")
+                async with client.stream(
+                    request.method,
+                    target_url,
+                    headers=headers,
+                    content=body,
+                ) as response:
+                    response_status_code = response.status_code
+                    # Check for error response
+                    if response.status_code >= 400:
+                        error_occurred = True
+                        error_content = await response.aread()
+                        error_message = f"HTTP {response.status_code}"
+                        try:
+                            error_json = json.loads(error_content)
+                            yield error_content
+                            return
+                        except json.JSONDecodeError:
+                            yield error_content
+                            return
+
+                    async for chunk in response.aiter_bytes():
+                        yield chunk
+                        # Try to parse SSE data for usage info and content
+                        try:
+                            chunk_str = chunk.decode()
+                            for line in chunk_str.split("\n"):
+                                if line.startswith("data: ") and line != "data: [DONE]":
+                                    data = json.loads(line[6:])
+                                    accumulated_data.append(data)
+                                    # Extract text content for full logging
+                                    if log_full_content:
+                                        # OpenAI/compatible format
+                                        delta = data.get("choices", [{}])[0].get("delta", {})
+                                        content = delta.get("content")
+                                        if content:
+                                            accumulated_content.append(content)
+                        except (json.JSONDecodeError, UnicodeDecodeError):
+                            pass
+
+            except httpx.TimeoutException:
+                error_occurred = True
+                error_message = "Stream timed out"
+                error_response = json.dumps({
+                    "error": {
+                        "message": f"{provider} stream timed out",
+                        "type": "timeout",
+                        "provider": provider,
+                        "request_id": request_id,
+                    }
+                })
+                yield f"data: {error_response}\n\n".encode()
+
+            except Exception as e:
+                error_occurred = True
+                error_message = str(e)
+                error_response = json.dumps({
+                    "error": {
+                        "message": f"Stream error: {str(e)}",
+                        "type": "stream_error",
+                        "provider": provider,
+                        "request_id": request_id,
+                    }
+                })
+                yield f"data: {error_response}\n\n".encode()
+
+            finally:
+                # Log after stream completes
+                latency_ms = int((time.time() - start_time) * 1000)
+
+                if error_occurred:
+                    provider_health.record_failure(provider, "stream_error", error_message or "Unknown", latency_ms)
+                    # Log failure to DB
+                    if request_log_id:
+                        try:
+                            await request_log_service.fail_request(
+                                request_log_id, "stream_error",
+                                error_message or "Unknown",
+                                status_code=response_status_code, latency_ms=latency_ms
+                            )
+                        except Exception:
+                            pass
+                else:
+                    provider_health.record_success(provider, latency_ms)
+                    # Log success to DB with full response if enabled
+                    if request_log_id:
+                        try:
+                            resp_metadata = None
+                            if log_full_content and accumulated_content:
+                                resp_metadata = {"content": "".join(accumulated_content)}
+                            await request_log_service.complete_request(
+                                request_log_id, response_status_code, latency_ms,
+                                response_metadata=resp_metadata
+                            )
+                        except Exception:
+                            pass
+
+                # Extract model and usage from accumulated data
+                # Use response model if available, fallback to request model
+                model = request_model or "unknown"
+                if accumulated_data and "model" in accumulated_data[0]:
+                    model = accumulated_data[0]["model"]
+
+                input_tokens = 0
+                output_tokens = 0
+                for chunk in reversed(accumulated_data):
+                    if "usage" in chunk:
+                        input_tokens = chunk["usage"].get("prompt_tokens", 0)
+                        output_tokens = chunk["usage"].get("completion_tokens", 0)
+                        break
+
+                try:
+                    await log_usage(
+                        db, api_key.id, provider, model,
+                        input_tokens, output_tokens, latency_ms,
+                        provider_key_id=provider_key_id,
+                        app_id=app_id, end_user_id=end_user_id
+                    )
+                except Exception as log_error:
+                    logger.error(f"Failed to log usage: {log_error}")
 
     return StreamingResponse(
         stream_and_log(),
