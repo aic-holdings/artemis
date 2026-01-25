@@ -197,6 +197,32 @@ class ProviderModelService:
 
         return counts
 
+    def _normalize_model_id(self, model_id: str) -> str:
+        """
+        Normalize a model ID by stripping OpenRouter variant suffixes.
+
+        OpenRouter supports variants like:
+        - :online - Web search enabled
+        - :thinking - Extended thinking/reasoning
+        - :extended - Extended context
+
+        These can be stacked (e.g., openai/gpt-4o:online:thinking).
+        We strip all suffixes to get the base model for validation.
+        """
+        # Known OpenRouter variant suffixes
+        variant_suffixes = [":online", ":thinking", ":extended", ":free", ":beta"]
+
+        normalized = model_id
+        for suffix in variant_suffixes:
+            if normalized.endswith(suffix):
+                normalized = normalized[:-len(suffix)]
+
+        # Handle stacked suffixes by recursing
+        if normalized != model_id:
+            return self._normalize_model_id(normalized)
+
+        return normalized
+
     async def is_model_enabled(self, provider_id: str, model_id: str) -> bool:
         """
         Check if a specific model is enabled for use.
@@ -207,11 +233,18 @@ class ProviderModelService:
 
         Returns False if:
         - The model exists in the database AND is disabled
+
+        Note: Model variants (e.g., :online, :thinking) are normalized to the base
+        model for validation. So if openai/gpt-4o is disabled, openai/gpt-4o:online
+        is also disabled.
         """
+        # Normalize model ID to strip variant suffixes
+        base_model_id = self._normalize_model_id(model_id)
+
         result = await self.db.execute(
             select(ProviderModel).where(
                 ProviderModel.provider_id == provider_id,
-                ProviderModel.model_id == model_id,
+                ProviderModel.model_id == base_model_id,
             )
         )
         model = result.scalar_one_or_none()

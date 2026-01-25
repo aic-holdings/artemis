@@ -515,20 +515,37 @@ def proxy_test(
     prompt: str = typer.Argument("Say hello in exactly 5 words.", help="Prompt to send"),
     model: str = typer.Option("openai/gpt-4o-mini", "--model", "-m", help="Model to use"),
     provider: str = typer.Option("openrouter", "--provider", "-p", help="Provider (openrouter, openai, anthropic)"),
+    web: bool = typer.Option(False, "--web", "-w", help="Enable web search (OpenRouter only)"),
+    web_results: int = typer.Option(5, "--web-results", help="Max web search results (1-10)"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Show full response"),
 ):
     """Test LLM proxy with a simple prompt.
 
     Example: artemis proxy test "What is 2+2?"
     Example: artemis proxy test "Hello" --model anthropic/claude-3-haiku
+    Example: artemis proxy test "Latest AI news" --web
+    Example: artemis proxy test "Current weather in NYC" --web --web-results 3
     """
+    # Handle web search - can use :online suffix or plugins array
+    effective_model = model
+    if web and provider == "openrouter":
+        # Use plugins array for more control
+        pass  # We'll add plugins below
+    elif web:
+        console.print("[yellow]Warning: --web only works with OpenRouter provider[/yellow]")
+
     data = {
-        "model": model,
+        "model": effective_model,
         "messages": [{"role": "user", "content": prompt}],
-        "max_tokens": 100,
+        "max_tokens": 500 if web else 100,  # More tokens for web results
     }
 
-    console.print(f"[dim]Sending to {provider}/{model}...[/dim]")
+    # Add web search plugin if enabled
+    if web and provider == "openrouter":
+        data["plugins"] = [{"id": "web", "max_results": web_results}]
+
+    search_indicator = " [cyan](web search)[/cyan]" if web else ""
+    console.print(f"[dim]Sending to {provider}/{model}...{search_indicator}[/dim]")
 
     try:
         result = api_request("POST", f"/v1/{provider}/chat/completions", data, timeout=60)
@@ -550,7 +567,29 @@ def proxy_test(
     console.print(f"  Provider: [cyan]{meta.get('provider', provider)}[/cyan]")
     console.print(f"  Latency: [cyan]{meta.get('latency_ms', 'N/A')}ms[/cyan]")
     console.print(f"  Tokens: [dim]in={usage.get('prompt_tokens', 'N/A')} out={usage.get('completion_tokens', 'N/A')}[/dim]")
+
+    # Show web search info if present (OpenRouter web search)
+    annotations = message.get("annotations", [])
+    citations = [a for a in annotations if a.get("type") == "url_citation"]
+    if citations:
+        console.print(f"  Web Sources: [cyan]{len(citations)}[/cyan]")
+
     console.print(f"\n[bold]Response:[/bold] {content}")
+
+    # Show citations if any (OpenRouter nests under url_citation)
+    if citations:
+        console.print(f"\n[bold]Sources:[/bold]")
+        seen_urls = set()
+        for i, cite in enumerate(citations[:5], 1):  # Limit to 5
+            # Handle nested url_citation structure
+            cite_data = cite.get("url_citation", cite)
+            url = cite_data.get("url", "")
+            if url in seen_urls:
+                continue
+            seen_urls.add(url)
+            title = cite_data.get("title", url)
+            console.print(f"  {i}. [dim]{title}[/dim]")
+            console.print(f"     [blue]{url}[/blue]")
 
     if verbose:
         console.print(f"\n[dim]Full response:[/dim]")
