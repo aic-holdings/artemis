@@ -170,13 +170,25 @@ def make_error_response(
 async def validate_api_key(
     request: Request, db: AsyncSession = Depends(get_db)
 ) -> tuple[APIKey, str]:
-    """Validate Artemis API key from Authorization header."""
+    """Validate Artemis API key from Authorization or x-api-key header.
+
+    Supports both formats:
+    - Authorization: Bearer art_xxx (standard)
+    - x-api-key: art_xxx (Anthropic SDK compatibility)
+    """
+    api_key_value = None
+
+    # Try Authorization header first
     auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        api_key_value = auth_header[7:]  # Remove "Bearer "
 
-    if not auth_header.startswith("Bearer "):
+    # Fall back to x-api-key header (Anthropic SDK format)
+    if not api_key_value:
+        api_key_value = request.headers.get("x-api-key", "")
+
+    if not api_key_value:
         raise HTTPException(status_code=401, detail="Missing or invalid Authorization header")
-
-    api_key_value = auth_header[7:]  # Remove "Bearer "
 
     if not api_key_value.startswith("art_"):
         raise HTTPException(status_code=401, detail="Invalid API key format")
