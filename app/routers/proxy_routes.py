@@ -339,8 +339,10 @@ def extract_usage_from_response(provider: str, response_data: dict) -> tuple[str
     elif provider == "openrouter":
         model = response_data.get("model", "unknown")
         usage = response_data.get("usage", {})
-        input_tokens = usage.get("prompt_tokens", 0)
-        output_tokens = usage.get("completion_tokens", 0)
+        # OpenRouter returns OpenAI format for /chat/completions
+        # but Anthropic format for /messages endpoint
+        input_tokens = usage.get("prompt_tokens") or usage.get("input_tokens") or 0
+        output_tokens = usage.get("completion_tokens") or usage.get("output_tokens") or 0
 
     return model, input_tokens, output_tokens
 
