@@ -109,4 +109,30 @@ async def run_migration(request: Request, db: AsyncSession = Depends(get_db)):
     except Exception as e:
         results.append({"error": str(e)})
 
+    # Check and add is_platform_admin column
+    try:
+        check_col = await db.execute(text("""
+            SELECT column_name FROM information_schema.columns
+            WHERE table_name = 'users' AND column_name = 'is_platform_admin'
+        """))
+        col_exists = check_col.fetchone() is not None
+
+        if col_exists:
+            results.append({"column": "is_platform_admin", "status": "already_exists"})
+        else:
+            await db.execute(text("""
+                ALTER TABLE users ADD COLUMN is_platform_admin BOOLEAN NOT NULL DEFAULT false
+            """))
+            await db.commit()
+            results.append({"column": "is_platform_admin", "status": "added"})
+
+            # Update alembic version
+            await db.execute(text("""
+                UPDATE alembic_version SET version_num = 'e5f6g7h8i9j0'
+            """))
+            await db.commit()
+            results.append({"alembic": "stamped to e5f6g7h8i9j0"})
+    except Exception as e:
+        results.append({"error": f"is_platform_admin: {str(e)}"})
+
     return JSONResponse({"migrations": results})
