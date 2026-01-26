@@ -463,6 +463,15 @@ async def proxy_request(
             app_id = metadata.get("app_id") or body_json.get("app_id")
             end_user_id = metadata.get("user_id") or body_json.get("user")
 
+            # For streaming requests, ensure we get usage data in the final chunk
+            # OpenAI and OpenRouter support stream_options.include_usage
+            if is_streaming and provider in ("openai", "openrouter"):
+                if "stream_options" not in body_json:
+                    body_json["stream_options"] = {}
+                body_json["stream_options"]["include_usage"] = True
+                body = json.dumps(body_json).encode()
+                body_modified = True
+
             # Handle web search convenience header for OpenRouter
             # X-Artemis-Web-Search: true enables web search
             # X-Artemis-Web-Results: N sets max results (default 5)
@@ -826,6 +835,11 @@ def handle_streaming_request(
                                         content = delta.get("content")
                                         if content:
                                             accumulated_content.append(content)
+                                        # Anthropic format: content_block_delta
+                                        if data.get("type") == "content_block_delta":
+                                            delta_content = data.get("delta", {}).get("text")
+                                            if delta_content:
+                                                accumulated_content.append(delta_content)
                         except (json.JSONDecodeError, UnicodeDecodeError):
                             pass
 
@@ -896,9 +910,20 @@ def handle_streaming_request(
                 output_tokens = 0
                 for chunk in reversed(accumulated_data):
                     if "usage" in chunk:
-                        input_tokens = chunk["usage"].get("prompt_tokens", 0)
-                        output_tokens = chunk["usage"].get("completion_tokens", 0)
+                        usage = chunk["usage"]
+                        # OpenAI format: prompt_tokens, completion_tokens
+                        # Anthropic format: input_tokens, output_tokens
+                        input_tokens = usage.get("prompt_tokens") or usage.get("input_tokens") or 0
+                        output_tokens = usage.get("completion_tokens") or usage.get("output_tokens") or 0
                         break
+                    # Also check for Anthropic message_delta with usage
+                    if chunk.get("type") == "message_delta" and "usage" in chunk:
+                        usage = chunk["usage"]
+                        output_tokens = usage.get("output_tokens", 0)
+                    if chunk.get("type") == "message_start" and "message" in chunk:
+                        msg = chunk["message"]
+                        if "usage" in msg:
+                            input_tokens = msg["usage"].get("input_tokens", 0)
 
                 try:
                     await log_usage(
