@@ -408,7 +408,7 @@ async def get_status(
     }
 
 
-@router.get("/v1/usage/breakdown")
+@router.get("/api/usage/breakdown")
 async def get_usage_breakdown(
     request: Request,
     db: AsyncSession = Depends(get_db),

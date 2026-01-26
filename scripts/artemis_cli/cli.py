@@ -836,7 +836,7 @@ def breakdown_cmd(
 
     Example: artemis breakdown --days 7
     """
-    result = api_request("GET", f"/v1/usage/breakdown?days={days}&limit={limit}")
+    result = api_request("GET", f"/api/usage/breakdown?days={days}&limit={limit}")
 
     if as_json:
         console.print(json.dumps(result, indent=2))
