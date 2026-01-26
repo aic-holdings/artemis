@@ -826,6 +826,108 @@ def usage_cmd(
         console.print(f"  This Period: [dim]{requests.get('period', 0):,}[/dim]")
 
 
+@app.command("breakdown")
+def breakdown_cmd(
+    days: int = typer.Option(30, "--days", "-d", help="Number of days to look back"),
+    limit: int = typer.Option(10, "--limit", "-l", help="Max items per category"),
+    as_json: bool = typer.Option(False, "--json", help="Output as JSON"),
+):
+    """Show detailed usage breakdown by model, provider, and day.
+
+    Example: artemis breakdown --days 7
+    """
+    result = api_request("GET", f"/v1/usage/breakdown?days={days}&limit={limit}")
+
+    if as_json:
+        console.print(json.dumps(result, indent=2))
+        return
+
+    totals = result.get("totals", {})
+    period = result.get("period", {})
+
+    console.print(f"[bold]Usage Breakdown[/bold] (last {period.get('days', days)} days)\n")
+    console.print(f"  Total Requests: [cyan]{totals.get('requests', 0):,}[/cyan]")
+    console.print(f"  Total Cost: [cyan]${totals.get('cost_usd', 0):.4f}[/cyan]")
+    console.print(f"  Total Tokens: [cyan]{totals.get('tokens', 0):,}[/cyan]")
+
+    # By Model
+    by_model = result.get("by_model", {})
+    if by_model:
+        console.print("\n[bold]By Model:[/bold]")
+        table = Table(show_header=True, header_style="bold")
+        table.add_column("Model", style="cyan")
+        table.add_column("Requests", justify="right")
+        table.add_column("Cost", justify="right", style="green")
+        table.add_column("Tokens", justify="right")
+        for model, data in by_model.items():
+            table.add_row(
+                model[:40],
+                f"{data['requests']:,}",
+                f"${data['cost_usd']:.4f}",
+                f"{data['tokens']:,}",
+            )
+        console.print(table)
+
+    # By Provider
+    by_provider = result.get("by_provider", {})
+    if by_provider:
+        console.print("\n[bold]By Provider:[/bold]")
+        table = Table(show_header=True, header_style="bold")
+        table.add_column("Provider", style="cyan")
+        table.add_column("Requests", justify="right")
+        table.add_column("Cost", justify="right", style="green")
+        table.add_column("Tokens", justify="right")
+        for provider, data in by_provider.items():
+            table.add_row(
+                provider,
+                f"{data['requests']:,}",
+                f"${data['cost_usd']:.4f}",
+                f"{data['tokens']:,}",
+            )
+        console.print(table)
+
+    # By Day (last 7)
+    by_day = result.get("by_day", {})
+    if by_day:
+        console.print("\n[bold]By Day (recent):[/bold]")
+        table = Table(show_header=True, header_style="bold")
+        table.add_column("Date", style="cyan")
+        table.add_column("Requests", justify="right")
+        table.add_column("Cost", justify="right", style="green")
+        table.add_column("Tokens", justify="right")
+        for day, data in list(by_day.items())[:7]:
+            table.add_row(
+                day,
+                f"{data['requests']:,}",
+                f"${data['cost_usd']:.4f}",
+                f"{data['tokens']:,}",
+            )
+        console.print(table)
+
+    # Recent requests
+    recent = result.get("recent_requests", [])
+    if recent:
+        console.print(f"\n[bold]Recent Requests[/bold] (last {len(recent)}):")
+        table = Table(show_header=True, header_style="bold")
+        table.add_column("Time", style="dim")
+        table.add_column("Model")
+        table.add_column("In", justify="right")
+        table.add_column("Out", justify="right")
+        table.add_column("Cost", justify="right", style="green")
+        table.add_column("App")
+        for req in recent[:10]:
+            ts = req.get("timestamp", "")[:19].replace("T", " ")
+            table.add_row(
+                ts,
+                req.get("model", "")[:30],
+                f"{req.get('input_tokens', 0):,}",
+                f"{req.get('output_tokens', 0):,}",
+                f"${req.get('cost_usd', 0):.4f}",
+                req.get("app_id", "-")[:15] if req.get("app_id") else "-",
+            )
+        console.print(table)
+
+
 @app.command("status")
 def status_cmd(
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Show full details"),

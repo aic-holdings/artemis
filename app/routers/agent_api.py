@@ -7,7 +7,7 @@ Provides machine-readable metadata and status for AI agents:
 - Rich error taxonomy for programmatic handling
 """
 import hashlib
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Request, Depends, HTTPException
@@ -405,4 +405,128 @@ async def get_status(
         "status": "operational",
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "providers": providers_status,
+    }
+
+
+@router.get("/v1/usage/breakdown")
+async def get_usage_breakdown(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    days: int = 30,
+    limit: int = 20,
+):
+    """
+    Get detailed usage breakdown by model, provider, and day.
+
+    Useful for understanding where costs are coming from.
+
+    Parameters:
+    - days: Number of days to look back (default 30)
+    - limit: Max items per category (default 20)
+    """
+    auth_header = request.headers.get("Authorization", "")
+    api_key_obj, error = await validate_api_key(auth_header, db)
+    if error:
+        return make_agent_error(
+            "INVALID_API_KEY",
+            error,
+            "permanent",
+            401,
+        )
+
+    # Calculate period start
+    now = datetime.now(timezone.utc)
+    period_start = now - timedelta(days=days)
+
+    # Get all usage logs for this API key in the period
+    result = await db.execute(
+        select(UsageLog)
+        .where(
+            UsageLog.api_key_id == api_key_obj.id,
+            UsageLog.created_at >= period_start,
+        )
+        .order_by(UsageLog.created_at.desc())
+    )
+    logs = result.scalars().all()
+
+    # Aggregate by model
+    by_model = {}
+    by_provider = {}
+    by_day = {}
+    recent_requests = []
+
+    for log in logs:
+        model = log.model or "unknown"
+        provider = log.provider or "unknown"
+        day = log.created_at.strftime("%Y-%m-%d")
+        cost_usd = (log.cost_cents or 0) / 100
+        tokens = (log.input_tokens or 0) + (log.output_tokens or 0)
+
+        # By model
+        if model not in by_model:
+            by_model[model] = {"requests": 0, "cost_usd": 0, "tokens": 0}
+        by_model[model]["requests"] += 1
+        by_model[model]["cost_usd"] += cost_usd
+        by_model[model]["tokens"] += tokens
+
+        # By provider
+        if provider not in by_provider:
+            by_provider[provider] = {"requests": 0, "cost_usd": 0, "tokens": 0}
+        by_provider[provider]["requests"] += 1
+        by_provider[provider]["cost_usd"] += cost_usd
+        by_provider[provider]["tokens"] += tokens
+
+        # By day
+        if day not in by_day:
+            by_day[day] = {"requests": 0, "cost_usd": 0, "tokens": 0}
+        by_day[day]["requests"] += 1
+        by_day[day]["cost_usd"] += cost_usd
+        by_day[day]["tokens"] += tokens
+
+        # Recent requests (last N)
+        if len(recent_requests) < limit:
+            recent_requests.append({
+                "timestamp": log.created_at.isoformat(),
+                "model": model,
+                "provider": provider,
+                "input_tokens": log.input_tokens or 0,
+                "output_tokens": log.output_tokens or 0,
+                "cost_usd": cost_usd,
+                "latency_ms": log.latency_ms,
+                "app_id": log.app_id,
+            })
+
+    # Sort and limit
+    by_model_sorted = dict(sorted(by_model.items(), key=lambda x: x[1]["cost_usd"], reverse=True)[:limit])
+    by_provider_sorted = dict(sorted(by_provider.items(), key=lambda x: x[1]["cost_usd"], reverse=True)[:limit])
+    by_day_sorted = dict(sorted(by_day.items(), reverse=True)[:limit])
+
+    # Round costs
+    for d in [by_model_sorted, by_provider_sorted, by_day_sorted]:
+        for k, v in d.items():
+            v["cost_usd"] = round(v["cost_usd"], 4)
+
+    total_cost = sum(v["cost_usd"] for v in by_model_sorted.values())
+    total_requests = sum(v["requests"] for v in by_model_sorted.values())
+    total_tokens = sum(v["tokens"] for v in by_model_sorted.values())
+
+    return {
+        "period": {
+            "start": period_start.isoformat(),
+            "end": now.isoformat(),
+            "days": days,
+        },
+        "totals": {
+            "requests": total_requests,
+            "cost_usd": round(total_cost, 4),
+            "tokens": total_tokens,
+        },
+        "by_model": by_model_sorted,
+        "by_provider": by_provider_sorted,
+        "by_day": by_day_sorted,
+        "recent_requests": recent_requests,
+        "_meta": {
+            "api_key_name": api_key_obj.name,
+            "group": api_key_obj.group.name if api_key_obj.group else None,
+        }
     }
