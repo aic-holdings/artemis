@@ -613,3 +613,124 @@ async def delete_provider_key(
     await db.commit()
 
     return {"message": "Provider key deleted", "id": key_id}
+
+
+# =============================================================================
+# Platform Admin Management
+# =============================================================================
+
+
+class SetPlatformAdminRequest(BaseModel):
+    """Request to set platform admin status for a user."""
+    email: str
+    is_platform_admin: bool = True
+
+
+@router.post("/platform-admins")
+async def set_platform_admin(
+    body: SetPlatformAdminRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Set platform admin status for a user.
+
+    Platform admins can see ALL organizations, groups, and usage data
+    across the entire Artemis instance.
+
+    **Request:**
+    ```
+    POST /api/v1/admin/platform-admins
+    Authorization: Bearer <MASTER_API_KEY>
+    Content-Type: application/json
+
+    {"email": "admin@example.com", "is_platform_admin": true}
+    ```
+    """
+    await verify_master_key(request)
+
+    # Find user by email
+    result = await db.execute(
+        select(User).where(User.email == body.email)
+    )
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail=f"User '{body.email}' not found")
+
+    # Update platform admin status
+    user.is_platform_admin = body.is_platform_admin
+    await db.commit()
+
+    return {
+        "message": f"Platform admin status updated for {body.email}",
+        "email": body.email,
+        "is_platform_admin": body.is_platform_admin,
+    }
+
+
+@router.get("/platform-admins")
+async def list_platform_admins(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    List all platform admins.
+
+    **Request:**
+    ```
+    GET /api/v1/admin/platform-admins
+    Authorization: Bearer <MASTER_API_KEY>
+    ```
+    """
+    await verify_master_key(request)
+
+    result = await db.execute(
+        select(User).where(User.is_platform_admin == True)
+    )
+    admins = result.scalars().all()
+
+    return {
+        "platform_admins": [
+            {
+                "id": str(u.id),
+                "email": u.email,
+                "is_service_account": u.is_service_account,
+            }
+            for u in admins
+        ]
+    }
+
+
+@router.get("/users")
+async def list_all_users(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    List all users (for admin lookup).
+
+    **Request:**
+    ```
+    GET /api/v1/admin/users
+    Authorization: Bearer <MASTER_API_KEY>
+    ```
+    """
+    await verify_master_key(request)
+
+    result = await db.execute(
+        select(User).order_by(User.email)
+    )
+    users = result.scalars().all()
+
+    return {
+        "users": [
+            {
+                "id": str(u.id),
+                "email": u.email,
+                "is_service_account": u.is_service_account,
+                "is_platform_admin": getattr(u, 'is_platform_admin', False),
+                "created_at": u.created_at.isoformat() if u.created_at else None,
+            }
+            for u in users
+        ]
+    }

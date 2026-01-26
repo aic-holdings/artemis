@@ -40,6 +40,7 @@ class User(Base):
     organization_id = Column(String, ForeignKey("organizations.id"), nullable=True, index=True)
     settings = Column(JSON, nullable=True, default=dict)  # User preferences (last_org_id, theme, etc.)
     is_service_account = Column(Boolean, default=False, nullable=False)  # Machine identity for apps
+    is_platform_admin = Column(Boolean, default=False, nullable=False)  # Can see ALL orgs/usage (AIC Holdings admins)
     created_at = Column(DateTime(timezone=True), default=utc_now)
 
     organization = relationship("Organization", foreign_keys=[organization_id], back_populates="users")

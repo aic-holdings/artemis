@@ -61,8 +61,19 @@ async def dashboard(
     user = ctx.user
     active_org = ctx.active_org
 
+    # Check if user is platform admin - they see ALL data
+    is_platform_admin = getattr(user, 'is_platform_admin', False)
+
     # Get organizations for dropdown
-    organizations = await get_user_organizations(user.id, db)
+    if is_platform_admin:
+        # Platform admins see ALL organizations
+        from app.models import Organization
+        all_orgs_result = await db.execute(
+            select(Organization).order_by(Organization.name)
+        )
+        organizations = list(all_orgs_result.scalars().all())
+    else:
+        organizations = await get_user_organizations(user.id, db)
 
     # Get filter values
     filter_provider = provider
@@ -81,17 +92,31 @@ async def dashboard(
     viewing_org_id = ctx.active_org_id
     viewing_group_id = ctx.active_group_id
 
-    # Track if we're in "All Groups" mode
+    # Track if we're in "All Groups" mode or "Platform Admin" mode
     all_groups_mode = viewing_org_id and not viewing_group_id
+    platform_admin_mode = is_platform_admin and not viewing_org_id  # Admin with no org selected = see everything
 
     # Get groups for filter dropdown (if in org context)
     groups = []
     if viewing_org_id:
-        groups = await get_user_groups(user.id, viewing_org_id, db)
+        if is_platform_admin:
+            # Platform admins see all groups in selected org
+            groups_result = await db.execute(
+                select(Group).where(Group.organization_id == viewing_org_id).order_by(Group.name)
+            )
+            groups = list(groups_result.scalars().all())
+        else:
+            groups = await get_user_groups(user.id, viewing_org_id, db)
 
     # Get group members (for user filter dropdown) - members of the active group or all groups
     group_users = []
-    if viewing_group_id:
+    if platform_admin_mode:
+        # Platform admin mode - get all users
+        all_users_result = await db.execute(
+            select(User).order_by(User.email)
+        )
+        group_users = list(all_users_result.scalars().all())
+    elif viewing_group_id:
         # Get all users who are members of this specific group
         group_members_result = await db.execute(
             select(User)
@@ -119,7 +144,12 @@ async def dashboard(
             group_users = list(group_members_result.scalars().all())
 
     # Determine which user(s) to show data for
-    if viewing_group_id:
+    if platform_admin_mode:
+        # Platform admin sees all - no user filtering unless explicitly filtered
+        target_user_ids = None  # Special value meaning "all users"
+        if filter_user_id:
+            target_user_ids = [filter_user_id]
+    elif viewing_group_id:
         # When viewing a specific group, show data for users IN that group
         target_user_ids = [u.id for u in group_users]
 
@@ -140,42 +170,74 @@ async def dashboard(
         target_user_ids = [user.id]
 
     # Get API keys - filtered by group if in group context
-    api_key_conditions = [APIKey.user_id.in_(target_user_ids)]
-    if viewing_group_id:
-        api_key_conditions.append(APIKey.group_id == viewing_group_id)
-    elif all_groups_mode:
-        # "All Groups" mode - get keys from all groups user belongs to
-        group_ids = [g.id for g in groups]
-        if group_ids:
-            api_key_conditions.append(APIKey.group_id.in_(group_ids))
-        else:
-            api_key_conditions.append(APIKey.group_id.is_(None))  # Fallback
+    # Platform admin mode: get ALL keys
+    if platform_admin_mode:
+        api_key_conditions = []  # No filtering - get all keys
+    elif target_user_ids:
+        api_key_conditions = [APIKey.user_id.in_(target_user_ids)]
     else:
-        api_key_conditions.append(APIKey.group_id.is_(None))
+        api_key_conditions = [APIKey.user_id.in_([user.id])]  # Fallback
 
-    all_api_keys_result = await db.execute(
-        select(APIKey).where(*api_key_conditions).order_by(APIKey.name)
-    )
+    if not platform_admin_mode:
+        if viewing_group_id:
+            api_key_conditions.append(APIKey.group_id == viewing_group_id)
+        elif all_groups_mode:
+            # "All Groups" mode - get keys from all groups user belongs to
+            group_ids = [g.id for g in groups]
+            if group_ids:
+                api_key_conditions.append(APIKey.group_id.in_(group_ids))
+            else:
+                api_key_conditions.append(APIKey.group_id.is_(None))  # Fallback
+        else:
+            api_key_conditions.append(APIKey.group_id.is_(None))
+
+    # Build API keys query - handle empty conditions for platform admin
+    if api_key_conditions:
+        all_api_keys_result = await db.execute(
+            select(APIKey).where(*api_key_conditions).order_by(APIKey.name)
+        )
+    else:
+        # Platform admin: get ALL keys
+        all_api_keys_result = await db.execute(
+            select(APIKey).order_by(APIKey.name)
+        )
     all_api_keys = all_api_keys_result.scalars().all()
 
     # Get active API keys for usage lookup
-    api_keys_result = await db.execute(
-        select(APIKey).where(*api_key_conditions, APIKey.revoked_at.is_(None))
-    )
+    if api_key_conditions:
+        api_keys_result = await db.execute(
+            select(APIKey).where(*api_key_conditions, APIKey.revoked_at.is_(None))
+        )
+    else:
+        api_keys_result = await db.execute(
+            select(APIKey).where(APIKey.revoked_at.is_(None))
+        )
     api_keys = api_keys_result.scalars().all()
     api_key_ids = [k.id for k in api_keys]
 
     # If filtering by specific API key, use that
     if filter_key_id:
-        key_check = await db.execute(
-            select(APIKey).where(APIKey.id == filter_key_id, *api_key_conditions)
-        )
+        if api_key_conditions:
+            key_check = await db.execute(
+                select(APIKey).where(APIKey.id == filter_key_id, *api_key_conditions)
+            )
+        else:
+            key_check = await db.execute(
+                select(APIKey).where(APIKey.id == filter_key_id)
+            )
         if key_check.scalar_one_or_none():
             api_key_ids = [filter_key_id]
 
     # Get provider keys - filtered by group if in group context
     # ProviderKey now goes through ProviderAccount for group_id and provider_id
-    if viewing_group_id:
+    if platform_admin_mode:
+        # Platform admin: get ALL provider keys
+        provider_keys_result = await db.execute(
+            select(ProviderKey)
+            .join(ProviderAccount)
+            .order_by(ProviderAccount.provider_id, ProviderKey.name)
+        )
+    elif viewing_group_id:
         provider_keys_result = await db.execute(
             select(ProviderKey)
             .join(ProviderAccount)
@@ -285,7 +347,18 @@ async def dashboard(
 
         # Build API key to group mapping for group aggregation
         api_key_to_group = {}  # api_key_id -> {group_id, group_name}
-        if all_groups_mode:
+        if platform_admin_mode:
+            # Platform admin: get all groups for mapping
+            all_groups_result = await db.execute(select(Group))
+            all_groups_list = list(all_groups_result.scalars().all())
+            group_lookup = {g.id: g.name for g in all_groups_list}
+            for key in all_api_keys:
+                if key.group_id and key.group_id in group_lookup:
+                    api_key_to_group[key.id] = {
+                        "group_id": key.group_id,
+                        "group_name": group_lookup[key.group_id]
+                    }
+        elif all_groups_mode:
             group_lookup = {g.id: g.name for g in groups}
             for key in all_api_keys:
                 if key.group_id and key.group_id in group_lookup:
@@ -391,8 +464,8 @@ async def dashboard(
                 app_agg[log.app_id]["input_cost"] += input_cost_cents / 100
                 app_agg[log.app_id]["output_cost"] += output_cost_cents / 100
 
-            # By group (in all_groups_mode)
-            if all_groups_mode and log.api_key_id in api_key_to_group:
+            # By group (in all_groups_mode or platform_admin_mode)
+            if (all_groups_mode or platform_admin_mode) and log.api_key_id in api_key_to_group:
                 group_info = api_key_to_group[log.api_key_id]
                 gid = group_info["group_id"]
                 if gid not in group_agg:
@@ -441,8 +514,8 @@ async def dashboard(
         # App usage sorted by cost descending
         usage_by_app = dict(sorted(app_agg.items(), key=lambda x: x[1]["cost"], reverse=True))
 
-        # Group usage sorted by cost descending (only in all_groups_mode)
-        if all_groups_mode:
+        # Group usage sorted by cost descending (in all_groups_mode or platform_admin_mode)
+        if all_groups_mode or platform_admin_mode:
             usage_by_group = dict(sorted(group_agg.items(), key=lambda x: x[1]["cost"], reverse=True))
 
     return templates.TemplateResponse(
@@ -480,6 +553,8 @@ async def dashboard(
             "filter_period": filter_period,
             "usage_by_group": usage_by_group,
             "all_groups_mode": all_groups_mode,
+            "is_platform_admin": is_platform_admin,
+            "platform_admin_mode": platform_admin_mode,
         },
     )
 
