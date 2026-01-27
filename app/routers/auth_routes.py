@@ -351,7 +351,11 @@ async def switch_org(
 
 
 @router.post("/clear-org")
-async def clear_org(request: Request, db: AsyncSession = Depends(get_db)):
+async def clear_org(
+    request: Request,
+    redirect: str = Form("/settings"),
+    db: AsyncSession = Depends(get_db)
+):
     """Clear active organization (show all personal data)."""
     ctx = await get_current_user(request, db)
     if ctx:
@@ -360,7 +364,11 @@ async def clear_org(request: Request, db: AsyncSession = Depends(get_db)):
         ctx.user.set_setting("last_group_id", None)
         await db.commit()
 
-    response = RedirectResponse(url="/settings", status_code=303)
+    # Validate redirect is a local path (security)
+    if not redirect.startswith("/"):
+        redirect = "/settings"
+
+    response = RedirectResponse(url=redirect, status_code=303)
     response.delete_cookie("active_org")
     return response
 

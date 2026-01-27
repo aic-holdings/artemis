@@ -10,15 +10,35 @@
             {% if active_org %}
             <p class="text-gray-600 mt-1">People groups in {{ active_org.name }}</p>
             {% elif is_platform_admin %}
-            <p class="text-gray-600 mt-1">All teams (Platform Admin view)</p>
+            <p class="text-gray-600 mt-1">All teams across all organizations (Platform Admin view)</p>
             {% endif %}
         </div>
-        {% if is_platform_admin and active_org %}
-        <button onclick="document.getElementById('createTeamModal').classList.remove('hidden')"
-                class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm font-medium">
-            + Create Team
-        </button>
-        {% endif %}
+        <div class="flex items-center space-x-3">
+            {% if is_platform_admin %}
+            <!-- Organization Filter for Platform Admins -->
+            <div class="flex items-center space-x-2">
+                {% if active_org %}
+                <form action="/clear-org" method="POST" class="inline">
+                    <input type="hidden" name="redirect" value="/teams">
+                    <button type="submit"
+                            class="px-3 py-2 text-sm text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded-lg">
+                        View All Orgs
+                    </button>
+                </form>
+                {% else %}
+                <span class="px-3 py-2 text-sm bg-indigo-100 text-indigo-800 rounded-lg">
+                    All Organizations
+                </span>
+                {% endif %}
+            </div>
+            {% endif %}
+            {% if is_platform_admin and active_org %}
+            <button onclick="document.getElementById('createTeamModal').classList.remove('hidden')"
+                    class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm font-medium">
+                + Create Team
+            </button>
+            {% endif %}
+        </div>
     </div>
 
     <!-- Error Messages -->
