@@ -88,11 +88,23 @@ async def dashboard(
     valid_periods = ["7", "14", "30", "qtd", "ytd", "itd"]
     filter_period = period if period in valid_periods else "30"
 
+    # Get usage stats for selected period
+    period_start = get_period_start(filter_period)
+
+    # Determine which organization's data to show
+    # If active_org is set, show that org's data; otherwise show current user's data only
+    viewing_org_id = ctx.active_org_id
+    viewing_group_id = ctx.active_group_id
+
+    # Track if we're in "All Groups" mode or "Platform Admin" mode
+    all_groups_mode = viewing_org_id and not viewing_group_id
+    platform_admin_mode = is_platform_admin and not viewing_org_id  # Admin with no org selected = see everything
+
     # Load services and teams for filter dropdowns
     all_services = []
     all_teams = []
-    if is_platform_admin:
-        # Platform admins see all services and teams
+    if is_platform_admin and not viewing_org_id:
+        # Platform admins with no org selected see all services and teams
         services_result = await db.execute(
             select(Service).where(Service.deleted_at.is_(None)).order_by(Service.name)
         )
@@ -117,18 +129,6 @@ async def dashboard(
             ).order_by(Team.name)
         )
         all_teams = list(teams_result.scalars().all())
-
-    # Get usage stats for selected period
-    period_start = get_period_start(filter_period)
-
-    # Determine which organization's data to show
-    # If active_org is set, show that org's data; otherwise show current user's data only
-    viewing_org_id = ctx.active_org_id
-    viewing_group_id = ctx.active_group_id
-
-    # Track if we're in "All Groups" mode or "Platform Admin" mode
-    all_groups_mode = viewing_org_id and not viewing_group_id
-    platform_admin_mode = is_platform_admin and not viewing_org_id  # Admin with no org selected = see everything
 
     # Get groups for filter dropdown (if in org context)
     groups = []
