@@ -134,11 +134,118 @@ class GroupMember(Base):
     )
 
 
+# ===========================================
+# NEW DATA MODEL: Teams & Services
+# ===========================================
+# Teams: Groups of people (users)
+# Services: Applications that call LLMs (have API keys)
+# This separates "who uses" from "what uses" for cleaner analytics
+
+
+class Team(Base):
+    """
+    Teams are groups of people within an organization.
+
+    Teams own Services. A user can belong to multiple teams.
+    Analytics can be sliced by team via denormalized team_id on UsageLog.
+    """
+    __tablename__ = "teams"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    organization_id = Column(String, ForeignKey("organizations.id"), nullable=False, index=True)
+    name = Column(String, nullable=False)
+    description = Column(Text, nullable=True)
+    status = Column(String, nullable=False, default="active")  # active, archived
+    created_by_user_id = Column(String, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=utc_now)
+    deleted_at = Column(DateTime(timezone=True), nullable=True)  # Soft delete
+
+    organization = relationship("Organization", backref="teams")
+    created_by = relationship("User", foreign_keys=[created_by_user_id])
+    members = relationship("TeamMember", back_populates="team", cascade="all, delete-orphan")
+    services = relationship("Service", back_populates="team")
+
+    __table_args__ = (
+        UniqueConstraint("organization_id", "name", name="unique_org_team_name"),
+    )
+
+
+class TeamMember(Base):
+    """
+    Pivot table for users belonging to teams.
+
+    Users can belong to multiple teams within an organization.
+    """
+    __tablename__ = "team_members"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    team_id = Column(String, ForeignKey("teams.id"), nullable=False, index=True)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    role = Column(String, nullable=False, default="member")  # admin, member
+    added_at = Column(DateTime(timezone=True), default=utc_now)
+    added_by_user_id = Column(String, ForeignKey("users.id"), nullable=True)
+
+    team = relationship("Team", back_populates="members")
+    user = relationship("User", foreign_keys=[user_id])
+    added_by = relationship("User", foreign_keys=[added_by_user_id])
+
+    __table_args__ = (
+        UniqueConstraint("team_id", "user_id", name="unique_team_member"),
+    )
+
+
+class Service(Base):
+    """
+    Services are applications that call LLMs through Artemis.
+
+    Examples: forge, taskr, watts, customer-facing-app
+
+    Services:
+    - Belong to an organization
+    - Optionally belong to a team (for ownership/billing)
+    - Have API keys issued to them
+    - Can be suspended (immediately revokes all keys)
+    - Can have spending alerts and budgets
+    """
+    __tablename__ = "services"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    organization_id = Column(String, ForeignKey("organizations.id"), nullable=False, index=True)
+    team_id = Column(String, ForeignKey("teams.id"), nullable=True, index=True)  # Owning team
+    name = Column(String, nullable=False)
+    description = Column(Text, nullable=True)
+
+    # Status
+    status = Column(String, nullable=False, default="active")  # active, suspended
+    suspended_at = Column(DateTime(timezone=True), nullable=True)
+    suspended_reason = Column(Text, nullable=True)
+    suspended_by_user_id = Column(String, ForeignKey("users.id"), nullable=True)
+
+    # Spending controls
+    alert_threshold_cents = Column(Integer, nullable=True)  # Rolling 24h spend alert
+    monthly_budget_cents = Column(Integer, nullable=True)   # Optional hard/soft cap
+
+    # Audit
+    created_by_user_id = Column(String, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=utc_now)
+    deleted_at = Column(DateTime(timezone=True), nullable=True)  # Soft delete
+
+    organization = relationship("Organization", backref="services")
+    team = relationship("Team", back_populates="services")
+    created_by = relationship("User", foreign_keys=[created_by_user_id])
+    suspended_by = relationship("User", foreign_keys=[suspended_by_user_id])
+    api_keys = relationship("APIKey", back_populates="service")
+
+    __table_args__ = (
+        UniqueConstraint("organization_id", "name", name="unique_org_service_name"),
+    )
+
+
 class APIKey(Base):
     __tablename__ = "api_keys"
 
     id = Column(String, primary_key=True, default=generate_uuid)
-    group_id = Column(String, ForeignKey("groups.id"), nullable=True, index=True)  # Keys belong to groups
+    group_id = Column(String, ForeignKey("groups.id"), nullable=True, index=True)  # Keys belong to groups (LEGACY)
     user_id = Column(String, ForeignKey("users.id"), nullable=False)  # Created by user (audit trail)
     key_hash = Column(String, nullable=False)
     key_prefix = Column(String, nullable=False)  # First 8 chars for display
@@ -152,8 +259,15 @@ class APIKey(Base):
     # Override which provider key to use per provider (e.g., {"openai": "uuid-of-key"})
     provider_key_overrides = Column(JSON, nullable=True)
 
+    # NEW: Service-based key management
+    service_id = Column(String, ForeignKey("services.id"), nullable=True, index=True)  # Service this key belongs to
+    environment = Column(String, nullable=True)  # prod, staging, dev
+    expires_at = Column(DateTime(timezone=True), nullable=True)  # Key expiration
+    rotation_group_id = Column(String, nullable=True, index=True)  # Links keys from same rotation cycle
+
     group = relationship("Group", back_populates="api_keys")
     user = relationship("User", back_populates="api_keys")
+    service = relationship("Service", back_populates="api_keys")
     usage_logs = relationship("UsageLog", back_populates="api_key", cascade="all, delete-orphan")
 
     __table_args__ = (
@@ -305,6 +419,15 @@ class UsageLog(Base):
     provider_key_id = Column(String, ForeignKey("provider_keys.id"), nullable=True, index=True)
     provider = Column(String, nullable=False, index=True)
     model = Column(String, nullable=False, index=True)
+
+    # ===========================================
+    # Denormalized Snapshots (for stable analytics)
+    # ===========================================
+    # These capture the state AT REQUEST TIME and don't change if relationships change later.
+    # This ensures historical analytics remain accurate even if a service moves to a different team.
+    service_id = Column(String, nullable=True, index=True)              # Service that made this request
+    team_id_at_request = Column(String, nullable=True, index=True)      # Team owning service at request time
+    api_key_created_by_user_id = Column(String, nullable=True, index=True)  # Who created the API key
 
     # ===========================================
     # Core Token Counts (all providers)
