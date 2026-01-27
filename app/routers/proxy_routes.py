@@ -287,7 +287,7 @@ async def get_provider_key(
 
 async def log_usage(
     db: AsyncSession,
-    api_key_id: str,
+    api_key: APIKey,
     provider: str,
     model: str,
     input_tokens: int,
@@ -298,11 +298,27 @@ async def log_usage(
     end_user_id: Optional[str] = None,
     request_metadata: Optional[dict] = None,
 ):
-    """Log API usage."""
+    """Log API usage with denormalized snapshots for analytics.
+
+    Captures service_id, team_id_at_request, and api_key_created_by_user_id
+    at request time. These snapshots prevent analytics from "moving" when
+    relationships change (e.g., service moves to different team).
+    """
     cost_cents = calculate_cost(provider, model, input_tokens, output_tokens)
 
+    # Capture denormalized snapshots for analytics slicing
+    service_id = api_key.service_id  # May be None for old keys
+    team_id_at_request = None
+
+    if service_id:
+        # Get team_id from service at request time (snapshot)
+        result = await db.execute(
+            select(Service.team_id).where(Service.id == service_id)
+        )
+        team_id_at_request = result.scalar_one_or_none()
+
     usage_log = UsageLog(
-        api_key_id=api_key_id,
+        api_key_id=api_key.id,
         provider_key_id=provider_key_id,
         provider=provider,
         model=model,
@@ -313,6 +329,10 @@ async def log_usage(
         app_id=app_id,
         end_user_id=end_user_id,
         request_metadata=request_metadata,
+        # Phase 3: Denormalized snapshots for analytics
+        service_id=service_id,
+        team_id_at_request=team_id_at_request,
+        api_key_created_by_user_id=api_key.user_id,
     )
     db.add(usage_log)
     await db.commit()
@@ -942,7 +962,7 @@ def handle_streaming_request(
 
                 try:
                     await log_usage(
-                        db, api_key.id, provider, model,
+                        db, api_key, provider, model,
                         input_tokens, output_tokens, latency_ms,
                         provider_key_id=provider_key_id,
                         app_id=app_id, end_user_id=end_user_id
@@ -1040,10 +1060,10 @@ async def handle_non_streaming_request(
         except Exception:
             pass
 
-    # Log usage
+    # Log usage with denormalized snapshots
     try:
         await log_usage(
-            db, api_key.id, provider, model,
+            db, api_key, provider, model,
             input_tokens, output_tokens, latency_ms,
             provider_key_id=provider_key_id,
             app_id=app_id, end_user_id=end_user_id
