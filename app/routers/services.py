@@ -192,6 +192,17 @@ async def service_detail(
     )
     summary_row = summary_result.first()
 
+    # Get teams for the edit dropdown
+    teams_result = await db.execute(
+        select(Team)
+        .where(
+            Team.organization_id == service.organization_id,
+            Team.deleted_at.is_(None)
+        )
+        .order_by(Team.name)
+    )
+    teams = list(teams_result.scalars().all())
+
     return templates.TemplateResponse(
         request,
         "service_detail.html",
@@ -204,6 +215,7 @@ async def service_detail(
             "service": service,
             "api_keys": api_keys,
             "usage_logs": usage_logs,
+            "teams": teams,
             "total_requests": summary_row[0] if summary_row else 0,
             "total_cost": (summary_row[1] or 0) / 100,
             "total_input_tokens": summary_row[2] or 0,
@@ -274,6 +286,53 @@ async def unsuspend_service(
         await db.commit()
 
     return RedirectResponse(url=f"/services/{service_id}", status_code=303)
+
+
+@router.post("/services/{service_id}/edit")
+async def edit_service(
+    service_id: str,
+    request: Request,
+    name: str = Form(...),
+    description: str = Form(None),
+    team_id: str = Form(None),
+    db: AsyncSession = Depends(get_db)
+):
+    """Edit a service (platform admin only)."""
+    ctx = await get_current_user(request, db)
+    if not ctx:
+        return RedirectResponse(url="/login", status_code=303)
+
+    is_platform_admin = getattr(ctx.user, 'is_platform_admin', False)
+    if not is_platform_admin:
+        return RedirectResponse(url=f"/services/{service_id}?error=no_permission", status_code=303)
+
+    # Get service
+    service_result = await db.execute(
+        select(Service).where(Service.id == service_id)
+    )
+    service = service_result.scalar_one_or_none()
+    if not service:
+        return RedirectResponse(url="/services", status_code=303)
+
+    # Check if new name conflicts with another service (if name changed)
+    if name.strip() != service.name:
+        existing = await db.execute(
+            select(Service).where(
+                Service.organization_id == service.organization_id,
+                Service.name == name.strip(),
+                Service.id != service_id
+            )
+        )
+        if existing.scalar_one_or_none():
+            return RedirectResponse(url=f"/services/{service_id}?error=name_exists", status_code=303)
+
+    # Update service
+    service.name = name.strip()
+    service.description = description.strip() if description else None
+    service.team_id = team_id if team_id else None
+    await db.commit()
+
+    return RedirectResponse(url=f"/services/{service_id}?success=updated", status_code=303)
 
 
 @router.post("/services/create")

@@ -211,6 +211,94 @@ async def team_detail(
     )
 
 
+@router.post("/teams/create")
+async def create_team(
+    request: Request,
+    name: str = Form(...),
+    description: str = Form(None),
+    db: AsyncSession = Depends(get_db)
+):
+    """Create a new team (platform admin only)."""
+    ctx = await get_current_user(request, db)
+    if not ctx:
+        return RedirectResponse(url="/login", status_code=303)
+
+    is_platform_admin = getattr(ctx.user, 'is_platform_admin', False)
+    if not is_platform_admin:
+        return RedirectResponse(url="/teams?error=no_permission", status_code=303)
+
+    if not ctx.active_org_id:
+        return RedirectResponse(url="/teams?error=no_org", status_code=303)
+
+    # Check if team name already exists in org
+    existing = await db.execute(
+        select(Team).where(
+            Team.organization_id == ctx.active_org_id,
+            Team.name == name.strip()
+        )
+    )
+    if existing.scalar_one_or_none():
+        return RedirectResponse(url="/teams?error=exists", status_code=303)
+
+    # Create team
+    team = Team(
+        organization_id=ctx.active_org_id,
+        name=name.strip(),
+        description=description.strip() if description else None,
+        status="active",
+        created_by_user_id=ctx.user.id,
+    )
+    db.add(team)
+    await db.commit()
+
+    return RedirectResponse(url=f"/teams/{team.id}", status_code=303)
+
+
+@router.post("/teams/{team_id}/edit")
+async def edit_team(
+    team_id: str,
+    request: Request,
+    name: str = Form(...),
+    description: str = Form(None),
+    db: AsyncSession = Depends(get_db)
+):
+    """Edit a team (platform admin only)."""
+    ctx = await get_current_user(request, db)
+    if not ctx:
+        return RedirectResponse(url="/login", status_code=303)
+
+    is_platform_admin = getattr(ctx.user, 'is_platform_admin', False)
+    if not is_platform_admin:
+        return RedirectResponse(url=f"/teams/{team_id}?error=no_permission", status_code=303)
+
+    # Get team
+    team_result = await db.execute(
+        select(Team).where(Team.id == team_id)
+    )
+    team = team_result.scalar_one_or_none()
+    if not team:
+        return RedirectResponse(url="/teams", status_code=303)
+
+    # Check if new name conflicts with another team (if name changed)
+    if name.strip() != team.name:
+        existing = await db.execute(
+            select(Team).where(
+                Team.organization_id == team.organization_id,
+                Team.name == name.strip(),
+                Team.id != team_id
+            )
+        )
+        if existing.scalar_one_or_none():
+            return RedirectResponse(url=f"/teams/{team_id}?error=name_exists", status_code=303)
+
+    # Update team
+    team.name = name.strip()
+    team.description = description.strip() if description else None
+    await db.commit()
+
+    return RedirectResponse(url=f"/teams/{team_id}?success=updated", status_code=303)
+
+
 @router.post("/teams/{team_id}/archive")
 async def archive_team(
     team_id: str,

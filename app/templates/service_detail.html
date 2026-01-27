@@ -32,6 +32,10 @@
 
         {% if is_platform_admin %}
         <div class="flex space-x-2">
+            <button onclick="document.getElementById('editServiceModal').classList.remove('hidden')"
+                    class="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm">
+                Edit
+            </button>
             {% if service.status == 'active' %}
             <form action="/services/{{ service.id }}/suspend" method="POST" class="inline"
                   onsubmit="return confirm('Suspend this service? All API keys linked to it will stop working.')">
@@ -200,6 +204,49 @@
         {% endif %}
     </div>
 </div>
+
+<!-- Edit Service Modal -->
+{% if is_platform_admin %}
+<div id="editServiceModal" class="hidden fixed inset-0 z-50 overflow-y-auto" aria-modal="true">
+    <div class="flex items-center justify-center min-h-screen p-4">
+        <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onclick="document.getElementById('editServiceModal').classList.add('hidden')"></div>
+        <div class="relative bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+            <h3 class="text-lg font-semibold text-gray-900 mb-4">Edit Service</h3>
+            <form action="/services/{{ service.id }}/edit" method="POST" class="space-y-4">
+                <div>
+                    <label for="edit_name" class="block text-sm font-medium text-gray-700 mb-1">Service Name</label>
+                    <input type="text" id="edit_name" name="name" value="{{ service.name }}" required
+                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500">
+                </div>
+                <div>
+                    <label for="edit_description" class="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                    <input type="text" id="edit_description" name="description" value="{{ service.description or '' }}"
+                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500">
+                </div>
+                <div>
+                    <label for="edit_team_id" class="block text-sm font-medium text-gray-700 mb-1">Owning Team</label>
+                    <select id="edit_team_id" name="team_id"
+                            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500">
+                        <option value="">No team</option>
+                        {% for team in teams %}
+                        <option value="{{ team.id }}" {% if service.team_id == team.id %}selected{% endif %}>{{ team.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="flex justify-end space-x-3 pt-4">
+                    <button type="button" onclick="document.getElementById('editServiceModal').classList.add('hidden')"
+                            class="px-4 py-2 text-gray-700 hover:text-gray-900">
+                        Cancel
+                    </button>
+                    <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">
+                        Save Changes
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
 
 <!-- Issue Key Modal -->
 {% if is_platform_admin %}
