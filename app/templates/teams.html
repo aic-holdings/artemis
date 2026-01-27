@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+
+{% block title %}Teams - Artemis{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto px-4 py-8">
+    <div class="flex justify-between items-center mb-8">
+        <div>
+            <h1 class="text-3xl font-bold text-gray-900">Teams</h1>
+            {% if active_org %}
+            <p class="text-gray-600 mt-1">People groups in {{ active_org.name }}</p>
+            {% elif is_platform_admin %}
+            <p class="text-gray-600 mt-1">All teams (Platform Admin view)</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Error Messages -->
+    {% if error %}
+    <div class="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
+        {{ error }}
+    </div>
+    {% endif %}
+
+    {% if not active_org and not is_platform_admin %}
+    <!-- No Organization Selected -->
+    <div class="bg-white rounded-lg shadow p-8 text-center">
+        <div class="text-6xl mb-4">👥</div>
+        <h2 class="text-xl font-semibold text-gray-800 mb-2">No Organization Selected</h2>
+        <p class="text-gray-600 mb-6">
+            Select an organization from the menu to manage teams.
+        </p>
+        <a href="/settings" class="inline-block px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">
+            Go to Settings
+        </a>
+    </div>
+    {% else %}
+
+    <!-- Teams List -->
+    {% if teams_with_info %}
+    <div class="bg-white rounded-lg shadow overflow-hidden">
+        <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Team</th>
+                    {% if is_platform_admin and not active_org %}
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Organization</th>
+                    {% endif %}
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Members</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Services</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Requests</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total Cost</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                </tr>
+            </thead>
+            <tbody class="bg-white divide-y divide-gray-200">
+                {% for item in teams_with_info %}
+                <tr class="hover:bg-gray-50">
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <div class="flex items-center">
+                            <div class="flex-shrink-0 h-10 w-10 rounded-lg bg-blue-100 flex items-center justify-center">
+                                <span class="text-blue-600 font-semibold text-lg">{{ item.team.name[0]|upper }}</span>
+                            </div>
+                            <div class="ml-4">
+                                <div class="text-sm font-medium text-gray-900">{{ item.team.name }}</div>
+                                {% if item.team.description %}
+                                <div class="text-sm text-gray-500">{{ item.team.description[:50] }}{% if item.team.description|length > 50 %}...{% endif %}</div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </td>
+                    {% if is_platform_admin and not active_org %}
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                        {{ item.org_name or 'Unknown' }}
+                    </td>
+                    {% endif %}
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        {% if item.team.status == 'active' %}
+                        <span class="px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded-full">Active</span>
+                        {% elif item.team.status == 'archived' %}
+                        <span class="px-2 py-1 text-xs font-medium bg-gray-100 text-gray-800 rounded-full">Archived</span>
+                        {% else %}
+                        <span class="px-2 py-1 text-xs font-medium bg-gray-100 text-gray-800 rounded-full">{{ item.team.status }}</span>
+                        {% endif %}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {{ item.member_count }}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {{ item.service_count }}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {{ "{:,}".format(item.request_count) }}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        ${{ "%.2f"|format(item.total_cost) }}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                        <a href="/teams/{{ item.team.id }}" class="text-indigo-600 hover:text-indigo-900">View</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <!-- No Teams -->
+    <div class="bg-white rounded-lg shadow p-8 text-center">
+        <div class="text-6xl mb-4">👥</div>
+        <h2 class="text-xl font-semibold text-gray-800 mb-2">No Teams Yet</h2>
+        <p class="text-gray-600 mb-6">
+            Teams are created via the admin API when setting up the organization structure.
+        </p>
+        <a href="/guide" class="inline-block px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">
+            View Integration Guide
+        </a>
+    </div>
+    {% endif %}
+
+    {% endif %}
+</div>
+{% endblock %}
