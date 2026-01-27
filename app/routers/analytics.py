@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.database import get_db
-from app.models import User, APIKey, ProviderKey, ProviderAccount, UsageLog, GroupMember, Group
+from app.models import User, APIKey, ProviderKey, ProviderAccount, UsageLog, GroupMember, Group, Service, Team
 from app.routers.auth_routes import get_current_user, get_user_organizations, get_user_groups
 from app.providers.pricing import get_pricing_for_date, get_fallback_pricing_info, UsageTokens, calculate_input_output_costs, FALLBACK_PRICING
 
@@ -51,6 +51,8 @@ async def dashboard(
     key_id: str = None,
     provider_key_id: str = None,
     user_id: str = None,
+    service_id: str = None,
+    team_id: str = None,
     period: str = "30",
 ):
     """Main dashboard with analytics."""
@@ -81,8 +83,40 @@ async def dashboard(
     filter_key_id = key_id
     filter_provider_key_id = provider_key_id
     filter_user_id = user_id
+    filter_service_id = service_id
+    filter_team_id = team_id
     valid_periods = ["7", "14", "30", "qtd", "ytd", "itd"]
     filter_period = period if period in valid_periods else "30"
+
+    # Load services and teams for filter dropdowns
+    all_services = []
+    all_teams = []
+    if is_platform_admin:
+        # Platform admins see all services and teams
+        services_result = await db.execute(
+            select(Service).where(Service.deleted_at.is_(None)).order_by(Service.name)
+        )
+        all_services = list(services_result.scalars().all())
+        teams_result = await db.execute(
+            select(Team).where(Team.deleted_at.is_(None)).order_by(Team.name)
+        )
+        all_teams = list(teams_result.scalars().all())
+    elif viewing_org_id:
+        # Show services and teams for the active organization
+        services_result = await db.execute(
+            select(Service).where(
+                Service.organization_id == viewing_org_id,
+                Service.deleted_at.is_(None)
+            ).order_by(Service.name)
+        )
+        all_services = list(services_result.scalars().all())
+        teams_result = await db.execute(
+            select(Team).where(
+                Team.organization_id == viewing_org_id,
+                Team.deleted_at.is_(None)
+            ).order_by(Team.name)
+        )
+        all_teams = list(teams_result.scalars().all())
 
     # Get usage stats for selected period
     period_start = get_period_start(filter_period)
@@ -300,6 +334,8 @@ async def dashboard(
     usage_by_provider_key = {}
     usage_by_app = {}
     usage_by_group = {}
+    usage_by_service = {}
+    usage_by_team = {}
     daily_usage = []
     app_ids = []
 
@@ -315,6 +351,10 @@ async def dashboard(
             base_conditions.append(UsageLog.app_id == filter_app_id)
         if filter_provider_key_id:
             base_conditions.append(UsageLog.provider_key_id == filter_provider_key_id)
+        if filter_service_id:
+            base_conditions.append(UsageLog.service_id == filter_service_id)
+        if filter_team_id:
+            base_conditions.append(UsageLog.team_id_at_request == filter_team_id)
 
         # Get distinct app_ids for filter dropdown
         app_ids_result = await db.execute(
@@ -344,6 +384,12 @@ async def dashboard(
         daily_agg = {}     # date_str -> {requests, cost, tokens}
         app_agg = {}       # app_id -> {requests, cost, tokens}
         group_agg = {}     # group_id -> {name, requests, cost, tokens}
+        service_agg = {}   # service_id -> {name, requests, cost, tokens}
+        team_agg = {}      # team_id -> {name, requests, cost, tokens}
+
+        # Build service and team lookup tables
+        service_lookup = {s.id: s.name for s in all_services}
+        team_lookup = {t.id: t.name for t in all_teams}
 
         # Build API key to group mapping for group aggregation
         api_key_to_group = {}  # api_key_id -> {group_id, group_name}
@@ -477,6 +523,30 @@ async def dashboard(
                 group_agg[gid]["cost"] += cost_cents / 100
                 group_agg[gid]["tokens"] += tokens
 
+            # By service (if service_id is populated)
+            if log.service_id:
+                sid = log.service_id
+                if sid not in service_agg:
+                    service_agg[sid] = {
+                        "name": service_lookup.get(sid, f"Service {sid[:8]}..."),
+                        "requests": 0, "cost": 0, "tokens": 0
+                    }
+                service_agg[sid]["requests"] += 1
+                service_agg[sid]["cost"] += cost_cents / 100
+                service_agg[sid]["tokens"] += tokens
+
+            # By team (if team_id_at_request is populated)
+            if log.team_id_at_request:
+                tid = log.team_id_at_request
+                if tid not in team_agg:
+                    team_agg[tid] = {
+                        "name": team_lookup.get(tid, f"Team {tid[:8]}..."),
+                        "requests": 0, "cost": 0, "tokens": 0
+                    }
+                team_agg[tid]["requests"] += 1
+                team_agg[tid]["cost"] += cost_cents / 100
+                team_agg[tid]["tokens"] += tokens
+
         # Calculate average latency
         avg_latency = int(total_latency_sum / latency_count) if latency_count > 0 else 0
 
@@ -518,6 +588,12 @@ async def dashboard(
         if all_groups_mode or platform_admin_mode:
             usage_by_group = dict(sorted(group_agg.items(), key=lambda x: x[1]["cost"], reverse=True))
 
+        # Service usage sorted by cost descending
+        usage_by_service = dict(sorted(service_agg.items(), key=lambda x: x[1]["cost"], reverse=True))
+
+        # Team usage sorted by cost descending
+        usage_by_team = dict(sorted(team_agg.items(), key=lambda x: x[1]["cost"], reverse=True))
+
     return templates.TemplateResponse(
         request,
         "dashboard.html",
@@ -551,7 +627,13 @@ async def dashboard(
             "filter_provider_key_id": filter_provider_key_id,
             "filter_user_id": filter_user_id,
             "filter_period": filter_period,
+            "filter_service_id": filter_service_id,
+            "filter_team_id": filter_team_id,
             "usage_by_group": usage_by_group,
+            "usage_by_service": usage_by_service,
+            "usage_by_team": usage_by_team,
+            "all_services": all_services,
+            "all_teams": all_teams,
             "all_groups_mode": all_groups_mode,
             "is_platform_admin": is_platform_admin,
             "platform_admin_mode": platform_admin_mode,

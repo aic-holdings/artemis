@@ -48,6 +48,22 @@
                     <option value="{{ app }}" {% if filter_app_id == app %}selected{% endif %}>{{ app }}</option>
                     {% endfor %}
                 </select>
+                {% if all_services %}
+                <select name="service_id" class="border rounded-lg px-3 py-2 text-sm" onchange="this.form.submit()">
+                    <option value="">All Services</option>
+                    {% for svc in all_services %}
+                    <option value="{{ svc.id }}" {% if filter_service_id == svc.id %}selected{% endif %}>{{ svc.name }}</option>
+                    {% endfor %}
+                </select>
+                {% endif %}
+                {% if all_teams %}
+                <select name="team_id" class="border rounded-lg px-3 py-2 text-sm" onchange="this.form.submit()">
+                    <option value="">All Teams</option>
+                    {% for team in all_teams %}
+                    <option value="{{ team.id }}" {% if filter_team_id == team.id %}selected{% endif %}>{{ team.name }}</option>
+                    {% endfor %}
+                </select>
+                {% endif %}
                 <select name="period" class="border rounded-lg px-3 py-2 text-sm" onchange="this.form.submit()">
                     <option value="7" {% if filter_period == '7' %}selected{% endif %}>Last 7 days</option>
                     <option value="14" {% if filter_period == '14' %}selected{% endif %}>Last 14 days</option>
@@ -238,6 +254,69 @@
                 </tbody>
             </table>
         </div>
+    </div>
+    {% endif %}
+
+    <!-- Usage by Service and Team -->
+    {% if usage_by_service or usage_by_team %}
+    <div class="grid md:grid-cols-2 gap-6 mb-8">
+        <!-- Usage by Service -->
+        {% if usage_by_service %}
+        <div class="bg-white p-6 rounded-xl shadow-sm border">
+            <h2 class="text-xl font-semibold mb-4">Usage by Service</h2>
+            <div class="overflow-x-auto">
+                <table class="w-full">
+                    <thead>
+                        <tr class="text-left text-gray-500 text-sm border-b">
+                            <th class="pb-3">Service</th>
+                            <th class="pb-3">Requests</th>
+                            <th class="pb-3">Tokens</th>
+                            <th class="pb-3">Cost</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for service_id, data in usage_by_service.items() %}
+                        <tr class="border-b last:border-0 hover:bg-gray-50">
+                            <td class="py-3 font-medium">{{ data.name }}</td>
+                            <td class="py-3">{{ "{:,}".format(data.requests) }}</td>
+                            <td class="py-3">{{ "{:,}".format(data.tokens) }}</td>
+                            <td class="py-3">${{ "%.2f"|format(data.cost) }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Usage by Team -->
+        {% if usage_by_team %}
+        <div class="bg-white p-6 rounded-xl shadow-sm border">
+            <h2 class="text-xl font-semibold mb-4">Usage by Team</h2>
+            <div class="overflow-x-auto">
+                <table class="w-full">
+                    <thead>
+                        <tr class="text-left text-gray-500 text-sm border-b">
+                            <th class="pb-3">Team</th>
+                            <th class="pb-3">Requests</th>
+                            <th class="pb-3">Tokens</th>
+                            <th class="pb-3">Cost</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for team_id, data in usage_by_team.items() %}
+                        <tr class="border-b last:border-0 hover:bg-gray-50">
+                            <td class="py-3 font-medium">{{ data.name }}</td>
+                            <td class="py-3">{{ "{:,}".format(data.requests) }}</td>
+                            <td class="py-3">{{ "{:,}".format(data.tokens) }}</td>
+                            <td class="py-3">${{ "%.2f"|format(data.cost) }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% endif %}
     </div>
     {% endif %}
 
