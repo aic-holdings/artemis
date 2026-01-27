@@ -737,6 +737,43 @@ async def list_all_users(
 
 
 # =============================================================================
+# Organizations (Read-only for now)
+# =============================================================================
+
+
+@router.get("/organizations")
+async def list_organizations(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    List all organizations.
+
+    **Request:**
+    ```
+    GET /api/v1/admin/organizations
+    Authorization: Bearer <MASTER_API_KEY>
+    ```
+    """
+    await verify_master_key(request)
+
+    result = await db.execute(select(Organization))
+    orgs = result.scalars().all()
+
+    return {
+        "organizations": [
+            {
+                "id": o.id,
+                "name": o.name,
+                "owner_id": o.owner_id,
+                "created_at": o.created_at.isoformat() if o.created_at else None,
+            }
+            for o in orgs
+        ]
+    }
+
+
+# =============================================================================
 # Teams Management
 # =============================================================================
 
