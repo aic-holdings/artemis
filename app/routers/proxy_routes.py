@@ -24,7 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.database import get_db
-from app.models import APIKey, ProviderKey, ProviderAccount, UsageLog, AppLog
+from app.models import APIKey, ProviderKey, ProviderAccount, UsageLog, AppLog, Service
 from app.auth import decrypt_api_key
 from app.config import settings
 from app.providers.pricing import calculate_cost, get_fallback_pricing
@@ -204,6 +204,19 @@ async def validate_api_key(
 
     if not api_key:
         raise HTTPException(status_code=401, detail="Invalid or revoked API key")
+
+    # Check if key's service is suspended
+    if api_key.service_id:
+        service_result = await db.execute(
+            select(Service).where(Service.id == api_key.service_id)
+        )
+        service = service_result.scalar_one_or_none()
+        if service and service.status == "suspended":
+            reason = service.suspended_reason or "Contact administrator"
+            raise HTTPException(
+                status_code=403,
+                detail=f"Service '{service.name}' is suspended: {reason}"
+            )
 
     # Update last used
     api_key.last_used_at = datetime.now(timezone.utc)
