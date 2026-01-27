@@ -9,8 +9,9 @@ from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
 
 from app.database import get_db
-from app.models import Service, Team, APIKey, UsageLog, utc_now
+from app.models import Service, Team, APIKey, UsageLog, Group, utc_now
 from app.routers.auth_routes import get_current_user, get_user_organizations, get_user_groups
+from app.auth import generate_api_key
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
@@ -273,3 +274,105 @@ async def unsuspend_service(
         await db.commit()
 
     return RedirectResponse(url=f"/services/{service_id}", status_code=303)
+
+
+@router.post("/services/create")
+async def create_service(
+    request: Request,
+    name: str = Form(...),
+    description: str = Form(None),
+    team_id: str = Form(None),
+    db: AsyncSession = Depends(get_db)
+):
+    """Create a new service (platform admin only)."""
+    ctx = await get_current_user(request, db)
+    if not ctx:
+        return RedirectResponse(url="/login", status_code=303)
+
+    is_platform_admin = getattr(ctx.user, 'is_platform_admin', False)
+    if not is_platform_admin:
+        return RedirectResponse(url="/services?error=no_permission", status_code=303)
+
+    if not ctx.active_org_id:
+        return RedirectResponse(url="/services?error=no_org", status_code=303)
+
+    # Check if service name already exists in org
+    existing = await db.execute(
+        select(Service).where(
+            Service.organization_id == ctx.active_org_id,
+            Service.name == name.strip()
+        )
+    )
+    if existing.scalar_one_or_none():
+        return RedirectResponse(url="/services?error=exists", status_code=303)
+
+    # Create service
+    service = Service(
+        organization_id=ctx.active_org_id,
+        name=name.strip(),
+        description=description.strip() if description else None,
+        team_id=team_id if team_id else None,
+        status="active",
+        created_by_user_id=ctx.user.id,
+    )
+    db.add(service)
+    await db.commit()
+
+    return RedirectResponse(url=f"/services/{service.id}", status_code=303)
+
+
+@router.post("/services/{service_id}/issue-key")
+async def issue_service_key(
+    service_id: str,
+    request: Request,
+    key_name: str = Form("Default"),
+    environment: str = Form(None),
+    db: AsyncSession = Depends(get_db)
+):
+    """Issue a new API key for a service (platform admin only)."""
+    ctx = await get_current_user(request, db)
+    if not ctx:
+        return RedirectResponse(url="/login", status_code=303)
+
+    is_platform_admin = getattr(ctx.user, 'is_platform_admin', False)
+    if not is_platform_admin:
+        return RedirectResponse(url=f"/services/{service_id}?error=no_permission", status_code=303)
+
+    # Get service
+    service_result = await db.execute(
+        select(Service).where(Service.id == service_id)
+    )
+    service = service_result.scalar_one_or_none()
+    if not service:
+        return RedirectResponse(url="/services", status_code=303)
+
+    # Get a group for the key (use first group in org)
+    group_result = await db.execute(
+        select(Group).where(Group.organization_id == service.organization_id).limit(1)
+    )
+    group = group_result.scalar_one_or_none()
+    if not group:
+        return RedirectResponse(url=f"/services/{service_id}?error=no_group", status_code=303)
+
+    # Generate API key
+    full_key, key_hash, key_prefix = generate_api_key()
+
+    api_key = APIKey(
+        user_id=ctx.user.id,
+        group_id=group.id,
+        service_id=service_id,
+        name=key_name.strip() if key_name else "Default",
+        key_hash=key_hash,
+        key_prefix=key_prefix,
+        environment=environment.strip() if environment else None,
+        is_system=False,
+    )
+    db.add(api_key)
+    await db.commit()
+
+    # Store the full key in session for one-time display
+    # We'll use query param to show it (not ideal but simple)
+    return RedirectResponse(
+        url=f"/services/{service_id}?new_key={full_key}&key_name={key_name}",
+        status_code=303
+    )
