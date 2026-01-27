@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+
+{% block title %}Services - Artemis{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto px-4 py-8">
+    <div class="flex justify-between items-center mb-8">
+        <div>
+            <h1 class="text-3xl font-bold text-gray-900">Services</h1>
+            {% if active_org %}
+            <p class="text-gray-600 mt-1">Applications using Artemis in {{ active_org.name }}</p>
+            {% elif is_platform_admin %}
+            <p class="text-gray-600 mt-1">All services (Platform Admin view)</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Error Messages -->
+    {% if error %}
+    <div class="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
+        {{ error }}
+    </div>
+    {% endif %}
+
+    {% if not active_org and not is_platform_admin %}
+    <!-- No Organization Selected -->
+    <div class="bg-white rounded-lg shadow p-8 text-center">
+        <div class="text-6xl mb-4">🔧</div>
+        <h2 class="text-xl font-semibold text-gray-800 mb-2">No Organization Selected</h2>
+        <p class="text-gray-600 mb-6">
+            Select an organization from the menu to manage services.
+        </p>
+        <a href="/settings" class="inline-block px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">
+            Go to Settings
+        </a>
+    </div>
+    {% else %}
+
+    <!-- Services List -->
+    {% if services_with_info %}
+    <div class="bg-white rounded-lg shadow overflow-hidden">
+        <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Service</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Team</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">API Keys</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Requests</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total Cost</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                </tr>
+            </thead>
+            <tbody class="bg-white divide-y divide-gray-200">
+                {% for item in services_with_info %}
+                <tr class="hover:bg-gray-50">
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <div class="flex items-center">
+                            <div class="flex-shrink-0 h-10 w-10 rounded-lg bg-indigo-100 flex items-center justify-center">
+                                <span class="text-indigo-600 font-semibold text-lg">{{ item.service.name[0]|upper }}</span>
+                            </div>
+                            <div class="ml-4">
+                                <div class="text-sm font-medium text-gray-900">{{ item.service.name }}</div>
+                                {% if item.service.description %}
+                                <div class="text-sm text-gray-500">{{ item.service.description }}</div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        {% if item.team_name %}
+                        <span class="px-2 py-1 text-xs font-medium bg-blue-100 text-blue-800 rounded-full">{{ item.team_name }}</span>
+                        {% else %}
+                        <span class="text-gray-400 text-sm">No team</span>
+                        {% endif %}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        {% if item.service.status == 'active' %}
+                        <span class="px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded-full">Active</span>
+                        {% elif item.service.status == 'suspended' %}
+                        <span class="px-2 py-1 text-xs font-medium bg-red-100 text-red-800 rounded-full">Suspended</span>
+                        {% else %}
+                        <span class="px-2 py-1 text-xs font-medium bg-gray-100 text-gray-800 rounded-full">{{ item.service.status }}</span>
+                        {% endif %}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {{ item.key_count }}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {{ "{:,}".format(item.request_count) }}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        ${{ "%.2f"|format(item.total_cost) }}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                        <a href="/services/{{ item.service.id }}" class="text-indigo-600 hover:text-indigo-900">View</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <!-- No Services -->
+    <div class="bg-white rounded-lg shadow p-8 text-center">
+        <div class="text-6xl mb-4">📦</div>
+        <h2 class="text-xl font-semibold text-gray-800 mb-2">No Services Yet</h2>
+        <p class="text-gray-600 mb-6">
+            Services are created via the admin API when applications are onboarded.
+        </p>
+        <a href="/guide" class="inline-block px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">
+            View Integration Guide
+        </a>
+    </div>
+    {% endif %}
+
+    {% endif %}
+</div>
+{% endblock %}

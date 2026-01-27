@@ -29,6 +29,7 @@ from app.routers import (
     health,
     guide,
     groups,
+    services,
     chat,
     whisper,
     embeddings,
@@ -97,6 +98,7 @@ app.include_router(logs.router, tags=["logs"])
 app.include_router(health.router, tags=["health"])
 app.include_router(guide.router, tags=["guide"])
 app.include_router(groups.router, tags=["groups"])
+app.include_router(services.router, tags=["services"])
 app.include_router(chat.router, tags=["chat"])
 app.include_router(whisper.router, tags=["whisper"])
 app.include_router(embeddings.router, tags=["embeddings"])

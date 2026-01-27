@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+
+{% block title %}{{ service.name }} - Artemis{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto px-4 py-8">
+    <!-- Breadcrumb -->
+    <nav class="mb-4 text-sm">
+        <a href="/services" class="text-indigo-600 hover:text-indigo-800">Services</a>
+        <span class="mx-2 text-gray-400">/</span>
+        <span class="text-gray-600">{{ service.name }}</span>
+    </nav>
+
+    <!-- Header -->
+    <div class="flex justify-between items-start mb-8">
+        <div>
+            <div class="flex items-center space-x-3">
+                <h1 class="text-3xl font-bold text-gray-900">{{ service.name }}</h1>
+                {% if service.status == 'active' %}
+                <span class="px-3 py-1 text-sm font-medium bg-green-100 text-green-800 rounded-full">Active</span>
+                {% elif service.status == 'suspended' %}
+                <span class="px-3 py-1 text-sm font-medium bg-red-100 text-red-800 rounded-full">Suspended</span>
+                {% endif %}
+            </div>
+            {% if service.description %}
+            <p class="text-gray-600 mt-2">{{ service.description }}</p>
+            {% endif %}
+            {% if service.team %}
+            <p class="text-sm text-gray-500 mt-1">Team: <span class="font-medium">{{ service.team.name }}</span></p>
+            {% endif %}
+        </div>
+
+        {% if is_platform_admin %}
+        <div class="flex space-x-2">
+            {% if service.status == 'active' %}
+            <form action="/services/{{ service.id }}/suspend" method="POST" class="inline"
+                  onsubmit="return confirm('Suspend this service? All API keys linked to it will stop working.')">
+                <input type="hidden" name="reason" value="Manually suspended by admin">
+                <button type="submit" class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm">
+                    Suspend Service
+                </button>
+            </form>
+            {% else %}
+            <form action="/services/{{ service.id }}/unsuspend" method="POST" class="inline">
+                <button type="submit" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm">
+                    Unsuspend Service
+                </button>
+            </form>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+
+    {% if service.status == 'suspended' and service.suspended_reason %}
+    <div class="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+        <p class="text-red-800 font-medium">Suspension Reason:</p>
+        <p class="text-red-700">{{ service.suspended_reason }}</p>
+        {% if service.suspended_at %}
+        <p class="text-red-600 text-sm mt-1">Suspended on {{ service.suspended_at.strftime('%Y-%m-%d %H:%M UTC') }}</p>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    <!-- Stats Cards -->
+    <div class="grid md:grid-cols-4 gap-6 mb-8">
+        <div class="bg-white p-6 rounded-xl shadow-sm border">
+            <div class="text-gray-500 text-sm font-medium mb-1">Total Requests</div>
+            <div class="text-2xl font-bold text-gray-900">{{ "{:,}".format(total_requests) }}</div>
+        </div>
+        <div class="bg-white p-6 rounded-xl shadow-sm border">
+            <div class="text-gray-500 text-sm font-medium mb-1">Total Cost</div>
+            <div class="text-2xl font-bold text-gray-900">${{ "%.2f"|format(total_cost) }}</div>
+        </div>
+        <div class="bg-white p-6 rounded-xl shadow-sm border">
+            <div class="text-gray-500 text-sm font-medium mb-1">Input Tokens</div>
+            <div class="text-2xl font-bold text-gray-900">{{ "{:,}".format(total_input_tokens) }}</div>
+        </div>
+        <div class="bg-white p-6 rounded-xl shadow-sm border">
+            <div class="text-gray-500 text-sm font-medium mb-1">Output Tokens</div>
+            <div class="text-2xl font-bold text-gray-900">{{ "{:,}".format(total_output_tokens) }}</div>
+        </div>
+    </div>
+
+    <!-- API Keys Section -->
+    <div class="bg-white rounded-lg shadow mb-8">
+        <div class="px-6 py-4 border-b">
+            <h2 class="text-lg font-semibold text-gray-900">API Keys ({{ api_keys|length }})</h2>
+        </div>
+        {% if api_keys %}
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Key Prefix</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Environment</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Created</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                    {% for key in api_keys %}
+                    <tr class="hover:bg-gray-50">
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{{ key.name }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-600">{{ key.key_prefix }}...</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                            {% if key.environment %}
+                            <span class="px-2 py-1 text-xs bg-gray-100 rounded">{{ key.environment }}</span>
+                            {% else %}
+                            <span class="text-gray-400">-</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            {% if key.revoked_at %}
+                            <span class="px-2 py-1 text-xs font-medium bg-red-100 text-red-800 rounded-full">Revoked</span>
+                            {% else %}
+                            <span class="px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded-full">Active</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {{ key.created_at.strftime('%Y-%m-%d') }}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="p-8 text-center text-gray-500">
+            No API keys linked to this service yet.
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Recent Usage Section -->
+    <div class="bg-white rounded-lg shadow">
+        <div class="px-6 py-4 border-b">
+            <h2 class="text-lg font-semibold text-gray-900">Recent Usage</h2>
+        </div>
+        {% if usage_logs %}
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Time</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Model</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Provider</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tokens</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Cost</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Latency</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                    {% for log in usage_logs %}
+                    <tr class="hover:bg-gray-50">
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {{ log.created_at.strftime('%Y-%m-%d %H:%M') }}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ log.model }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600 capitalize">{{ log.provider }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                            {{ "{:,}".format((log.input_tokens or 0) + (log.output_tokens or 0)) }}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                            ${{ "%.4f"|format((log.cost_cents or 0) / 100) }}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                            {{ log.latency_ms or 0 }}ms
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="p-8 text-center text-gray-500">
+            No usage data yet.
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
