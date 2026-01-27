@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.database import get_db
-from app.models import User, Organization, Group, APIKey, Provider, ProviderAccount, ProviderKey
+from app.models import User, Organization, Group, APIKey, Provider, ProviderAccount, ProviderKey, Team, TeamMember, Service
 from app.config import settings
 from app.auth import generate_api_key, hash_password, encrypt_api_key
 
@@ -734,3 +734,682 @@ async def list_all_users(
             for u in users
         ]
     }
+
+
+# =============================================================================
+# Teams Management
+# =============================================================================
+
+
+class CreateTeamRequest(BaseModel):
+    """Request to create a team."""
+    organization_id: str
+    name: str
+    description: Optional[str] = None
+
+
+class AddTeamMemberRequest(BaseModel):
+    """Request to add a member to a team."""
+    user_id: str
+    role: str = "member"  # admin, member
+
+
+@router.post("/teams")
+async def create_team(
+    body: CreateTeamRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Create a team within an organization.
+
+    **Request:**
+    ```
+    POST /api/v1/admin/teams
+    Authorization: Bearer <MASTER_API_KEY>
+    Content-Type: application/json
+
+    {"organization_id": "uuid", "name": "Platform Team", "description": "Core platform engineers"}
+    ```
+    """
+    await verify_master_key(request)
+
+    # Verify organization exists
+    result = await db.execute(select(Organization).where(Organization.id == body.organization_id))
+    org = result.scalar_one_or_none()
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+
+    # Check if team name already exists in org
+    result = await db.execute(
+        select(Team).where(Team.organization_id == body.organization_id, Team.name == body.name)
+    )
+    if result.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail=f"Team '{body.name}' already exists in this organization")
+
+    team = Team(
+        organization_id=body.organization_id,
+        name=body.name,
+        description=body.description,
+        status="active",
+    )
+    db.add(team)
+    await db.commit()
+
+    return {
+        "id": team.id,
+        "organization_id": team.organization_id,
+        "name": team.name,
+        "description": team.description,
+        "status": team.status,
+        "created_at": team.created_at.isoformat() if team.created_at else None,
+    }
+
+
+@router.get("/teams")
+async def list_teams(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    organization_id: Optional[str] = None,
+):
+    """
+    List all teams, optionally filtered by organization.
+
+    **Request:**
+    ```
+    GET /api/v1/admin/teams?organization_id=uuid
+    Authorization: Bearer <MASTER_API_KEY>
+    ```
+    """
+    await verify_master_key(request)
+
+    query = select(Team).where(Team.deleted_at.is_(None))
+    if organization_id:
+        query = query.where(Team.organization_id == organization_id)
+
+    result = await db.execute(query)
+    teams = result.scalars().all()
+
+    return {
+        "teams": [
+            {
+                "id": t.id,
+                "organization_id": t.organization_id,
+                "name": t.name,
+                "description": t.description,
+                "status": t.status,
+                "created_at": t.created_at.isoformat() if t.created_at else None,
+            }
+            for t in teams
+        ]
+    }
+
+
+@router.get("/teams/{team_id}")
+async def get_team(
+    team_id: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get a team by ID, including its members and services.
+
+    **Request:**
+    ```
+    GET /api/v1/admin/teams/{team_id}
+    Authorization: Bearer <MASTER_API_KEY>
+    ```
+    """
+    await verify_master_key(request)
+
+    result = await db.execute(select(Team).where(Team.id == team_id))
+    team = result.scalar_one_or_none()
+    if not team:
+        raise HTTPException(status_code=404, detail="Team not found")
+
+    # Get members
+    result = await db.execute(
+        select(TeamMember, User)
+        .join(User, TeamMember.user_id == User.id)
+        .where(TeamMember.team_id == team_id)
+    )
+    members = [
+        {
+            "id": tm.id,
+            "user_id": tm.user_id,
+            "email": u.email,
+            "role": tm.role,
+            "added_at": tm.added_at.isoformat() if tm.added_at else None,
+        }
+        for tm, u in result.all()
+    ]
+
+    # Get services
+    result = await db.execute(
+        select(Service).where(Service.team_id == team_id, Service.deleted_at.is_(None))
+    )
+    services = [
+        {
+            "id": s.id,
+            "name": s.name,
+            "status": s.status,
+        }
+        for s in result.scalars().all()
+    ]
+
+    return {
+        "id": team.id,
+        "organization_id": team.organization_id,
+        "name": team.name,
+        "description": team.description,
+        "status": team.status,
+        "created_at": team.created_at.isoformat() if team.created_at else None,
+        "members": members,
+        "services": services,
+    }
+
+
+@router.post("/teams/{team_id}/members")
+async def add_team_member(
+    team_id: str,
+    body: AddTeamMemberRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Add a member to a team.
+
+    **Request:**
+    ```
+    POST /api/v1/admin/teams/{team_id}/members
+    Authorization: Bearer <MASTER_API_KEY>
+    Content-Type: application/json
+
+    {"user_id": "uuid", "role": "member"}
+    ```
+    """
+    await verify_master_key(request)
+
+    # Verify team exists
+    result = await db.execute(select(Team).where(Team.id == team_id))
+    team = result.scalar_one_or_none()
+    if not team:
+        raise HTTPException(status_code=404, detail="Team not found")
+
+    # Verify user exists
+    result = await db.execute(select(User).where(User.id == body.user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Check if already a member
+    result = await db.execute(
+        select(TeamMember).where(TeamMember.team_id == team_id, TeamMember.user_id == body.user_id)
+    )
+    if result.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail="User is already a member of this team")
+
+    member = TeamMember(
+        team_id=team_id,
+        user_id=body.user_id,
+        role=body.role,
+    )
+    db.add(member)
+    await db.commit()
+
+    return {
+        "id": member.id,
+        "team_id": team_id,
+        "user_id": body.user_id,
+        "role": body.role,
+        "message": f"Added {user.email} to team {team.name}",
+    }
+
+
+@router.delete("/teams/{team_id}")
+async def delete_team(
+    team_id: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Soft delete a team.
+
+    **Request:**
+    ```
+    DELETE /api/v1/admin/teams/{team_id}
+    Authorization: Bearer <MASTER_API_KEY>
+    ```
+    """
+    await verify_master_key(request)
+
+    result = await db.execute(select(Team).where(Team.id == team_id))
+    team = result.scalar_one_or_none()
+    if not team:
+        raise HTTPException(status_code=404, detail="Team not found")
+
+    team.deleted_at = datetime.now(timezone.utc)
+    team.status = "archived"
+    await db.commit()
+
+    return {"message": "Team deleted", "id": team_id}
+
+
+# =============================================================================
+# Services Management
+# =============================================================================
+
+
+class CreateServiceRequest(BaseModel):
+    """Request to create a service."""
+    organization_id: str
+    name: str
+    description: Optional[str] = None
+    team_id: Optional[str] = None
+    alert_threshold_cents: Optional[int] = None
+    monthly_budget_cents: Optional[int] = None
+
+
+@router.post("/services")
+async def create_service(
+    body: CreateServiceRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Create a service (application that calls LLMs).
+
+    **Request:**
+    ```
+    POST /api/v1/admin/services
+    Authorization: Bearer <MASTER_API_KEY>
+    Content-Type: application/json
+
+    {
+        "organization_id": "uuid",
+        "name": "forge",
+        "description": "AI code assistant",
+        "team_id": "uuid",  // optional
+        "alert_threshold_cents": 5000  // optional
+    }
+    ```
+    """
+    await verify_master_key(request)
+
+    # Verify organization exists
+    result = await db.execute(select(Organization).where(Organization.id == body.organization_id))
+    org = result.scalar_one_or_none()
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+
+    # Verify team exists if provided
+    if body.team_id:
+        result = await db.execute(select(Team).where(Team.id == body.team_id))
+        team = result.scalar_one_or_none()
+        if not team:
+            raise HTTPException(status_code=404, detail="Team not found")
+
+    # Check if service name already exists in org
+    result = await db.execute(
+        select(Service).where(Service.organization_id == body.organization_id, Service.name == body.name)
+    )
+    if result.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail=f"Service '{body.name}' already exists in this organization")
+
+    service = Service(
+        organization_id=body.organization_id,
+        name=body.name,
+        description=body.description,
+        team_id=body.team_id,
+        status="active",
+        alert_threshold_cents=body.alert_threshold_cents,
+        monthly_budget_cents=body.monthly_budget_cents,
+    )
+    db.add(service)
+    await db.commit()
+
+    return {
+        "id": service.id,
+        "organization_id": service.organization_id,
+        "team_id": service.team_id,
+        "name": service.name,
+        "description": service.description,
+        "status": service.status,
+        "alert_threshold_cents": service.alert_threshold_cents,
+        "monthly_budget_cents": service.monthly_budget_cents,
+        "created_at": service.created_at.isoformat() if service.created_at else None,
+    }
+
+
+@router.get("/services")
+async def list_services(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    organization_id: Optional[str] = None,
+    team_id: Optional[str] = None,
+):
+    """
+    List all services, optionally filtered by organization or team.
+
+    **Request:**
+    ```
+    GET /api/v1/admin/services?organization_id=uuid&team_id=uuid
+    Authorization: Bearer <MASTER_API_KEY>
+    ```
+    """
+    await verify_master_key(request)
+
+    query = select(Service).where(Service.deleted_at.is_(None))
+    if organization_id:
+        query = query.where(Service.organization_id == organization_id)
+    if team_id:
+        query = query.where(Service.team_id == team_id)
+
+    result = await db.execute(query)
+    services = result.scalars().all()
+
+    return {
+        "services": [
+            {
+                "id": s.id,
+                "organization_id": s.organization_id,
+                "team_id": s.team_id,
+                "name": s.name,
+                "description": s.description,
+                "status": s.status,
+                "alert_threshold_cents": s.alert_threshold_cents,
+                "monthly_budget_cents": s.monthly_budget_cents,
+                "created_at": s.created_at.isoformat() if s.created_at else None,
+            }
+            for s in services
+        ]
+    }
+
+
+@router.get("/services/{service_id}")
+async def get_service(
+    service_id: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get a service by ID, including its API keys.
+
+    **Request:**
+    ```
+    GET /api/v1/admin/services/{service_id}
+    Authorization: Bearer <MASTER_API_KEY>
+    ```
+    """
+    await verify_master_key(request)
+
+    result = await db.execute(select(Service).where(Service.id == service_id))
+    service = result.scalar_one_or_none()
+    if not service:
+        raise HTTPException(status_code=404, detail="Service not found")
+
+    # Get API keys for this service
+    result = await db.execute(
+        select(APIKey).where(APIKey.service_id == service_id)
+    )
+    keys = [
+        {
+            "id": k.id,
+            "name": k.name,
+            "key_prefix": k.key_prefix,
+            "environment": k.environment,
+            "created_at": k.created_at.isoformat() if k.created_at else None,
+            "revoked_at": k.revoked_at.isoformat() if k.revoked_at else None,
+        }
+        for k in result.scalars().all()
+    ]
+
+    return {
+        "id": service.id,
+        "organization_id": service.organization_id,
+        "team_id": service.team_id,
+        "name": service.name,
+        "description": service.description,
+        "status": service.status,
+        "alert_threshold_cents": service.alert_threshold_cents,
+        "monthly_budget_cents": service.monthly_budget_cents,
+        "suspended_at": service.suspended_at.isoformat() if service.suspended_at else None,
+        "suspended_reason": service.suspended_reason,
+        "created_at": service.created_at.isoformat() if service.created_at else None,
+        "api_keys": keys,
+    }
+
+
+@router.post("/services/{service_id}/suspend")
+async def suspend_service(
+    service_id: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    reason: Optional[str] = None,
+):
+    """
+    Suspend a service. All API keys for this service will be blocked.
+
+    **Request:**
+    ```
+    POST /api/v1/admin/services/{service_id}/suspend?reason=Exceeded%20budget
+    Authorization: Bearer <MASTER_API_KEY>
+    ```
+    """
+    await verify_master_key(request)
+
+    result = await db.execute(select(Service).where(Service.id == service_id))
+    service = result.scalar_one_or_none()
+    if not service:
+        raise HTTPException(status_code=404, detail="Service not found")
+
+    if service.status == "suspended":
+        raise HTTPException(status_code=400, detail="Service is already suspended")
+
+    service.status = "suspended"
+    service.suspended_at = datetime.now(timezone.utc)
+    service.suspended_reason = reason
+    await db.commit()
+
+    return {
+        "message": f"Service '{service.name}' suspended",
+        "id": service_id,
+        "suspended_at": service.suspended_at.isoformat(),
+        "reason": reason,
+    }
+
+
+@router.post("/services/{service_id}/activate")
+async def activate_service(
+    service_id: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Reactivate a suspended service.
+
+    **Request:**
+    ```
+    POST /api/v1/admin/services/{service_id}/activate
+    Authorization: Bearer <MASTER_API_KEY>
+    ```
+    """
+    await verify_master_key(request)
+
+    result = await db.execute(select(Service).where(Service.id == service_id))
+    service = result.scalar_one_or_none()
+    if not service:
+        raise HTTPException(status_code=404, detail="Service not found")
+
+    if service.status == "active":
+        raise HTTPException(status_code=400, detail="Service is already active")
+
+    service.status = "active"
+    service.suspended_at = None
+    service.suspended_reason = None
+    await db.commit()
+
+    return {
+        "message": f"Service '{service.name}' reactivated",
+        "id": service_id,
+    }
+
+
+@router.post("/services/{service_id}/keys")
+async def issue_service_key(
+    service_id: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    key_name: str = "Default",
+    environment: Optional[str] = None,
+):
+    """
+    Issue an API key for a service.
+
+    **Request:**
+    ```
+    POST /api/v1/admin/services/{service_id}/keys?key_name=Production&environment=prod
+    Authorization: Bearer <MASTER_API_KEY>
+    ```
+    """
+    await verify_master_key(request)
+
+    result = await db.execute(select(Service).where(Service.id == service_id))
+    service = result.scalar_one_or_none()
+    if not service:
+        raise HTTPException(status_code=404, detail="Service not found")
+
+    # Get organization owner as key owner
+    result = await db.execute(select(Organization).where(Organization.id == service.organization_id))
+    org = result.scalar_one_or_none()
+    if not org or not org.owner_id:
+        raise HTTPException(status_code=500, detail="Service organization has no owner")
+
+    # Get a group for the key (use first group in org)
+    result = await db.execute(select(Group).where(Group.organization_id == service.organization_id).limit(1))
+    group = result.scalar_one_or_none()
+    if not group:
+        raise HTTPException(status_code=500, detail="Organization has no groups")
+
+    # Generate API key
+    full_key, key_hash, key_prefix = generate_api_key()
+
+    api_key = APIKey(
+        user_id=org.owner_id,
+        group_id=group.id,
+        service_id=service_id,
+        name=key_name,
+        key_hash=key_hash,
+        key_prefix=key_prefix,
+        environment=environment,
+        is_system=False,
+    )
+    db.add(api_key)
+    await db.commit()
+
+    return {
+        "id": api_key.id,
+        "service_id": service_id,
+        "name": key_name,
+        "api_key": full_key,
+        "key_prefix": key_prefix,
+        "environment": environment,
+        "message": "API key issued. Store securely - it won't be shown again.",
+    }
+
+
+@router.delete("/services/{service_id}")
+async def delete_service(
+    service_id: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Soft delete a service.
+
+    **Request:**
+    ```
+    DELETE /api/v1/admin/services/{service_id}
+    Authorization: Bearer <MASTER_API_KEY>
+    ```
+    """
+    await verify_master_key(request)
+
+    result = await db.execute(select(Service).where(Service.id == service_id))
+    service = result.scalar_one_or_none()
+    if not service:
+        raise HTTPException(status_code=404, detail="Service not found")
+
+    service.deleted_at = datetime.now(timezone.utc)
+    await db.commit()
+
+    return {"message": "Service deleted", "id": service_id}
+
+
+# =============================================================================
+# Schema Verification (Testing)
+# =============================================================================
+
+
+@router.get("/schema-check")
+async def check_schema(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Verify the database schema for new tables and columns.
+    Useful for testing after migrations.
+
+    **Request:**
+    ```
+    GET /api/v1/admin/schema-check
+    Authorization: Bearer <MASTER_API_KEY>
+    ```
+    """
+    await verify_master_key(request)
+
+    from sqlalchemy import text
+
+    results = {}
+
+    # Check tables exist
+    for table in ["teams", "team_members", "services"]:
+        check = await db.execute(text(f"""
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables
+                WHERE table_name = '{table}'
+            )
+        """))
+        results[f"table_{table}"] = check.scalar()
+
+    # Check api_keys new columns
+    for col in ["service_id", "environment", "expires_at", "rotation_group_id"]:
+        check = await db.execute(text(f"""
+            SELECT EXISTS (
+                SELECT FROM information_schema.columns
+                WHERE table_name = 'api_keys' AND column_name = '{col}'
+            )
+        """))
+        results[f"api_keys_{col}"] = check.scalar()
+
+    # Check usage_logs new columns
+    for col in ["service_id", "team_id_at_request", "api_key_created_by_user_id"]:
+        check = await db.execute(text(f"""
+            SELECT EXISTS (
+                SELECT FROM information_schema.columns
+                WHERE table_name = 'usage_logs' AND column_name = '{col}'
+            )
+        """))
+        results[f"usage_logs_{col}"] = check.scalar()
+
+    # Get counts
+    teams_count = await db.execute(text("SELECT COUNT(*) FROM teams"))
+    results["teams_count"] = teams_count.scalar()
+
+    services_count = await db.execute(text("SELECT COUNT(*) FROM services"))
+    results["services_count"] = services_count.scalar()
+
+    all_passed = all(v is True for k, v in results.items() if k.startswith("table_") or k.startswith("api_keys_") or k.startswith("usage_logs_"))
+    results["all_schema_checks_passed"] = all_passed
+
+    return results
