@@ -6,9 +6,10 @@ from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
+from sqlalchemy.orm import selectinload
 
 from app.database import get_db
-from app.models import APIKey, UsageLog, AppLog
+from app.models import APIKey, UsageLog, AppLog, Service
 from app.routers.auth_routes import get_current_user, get_user_organizations, get_user_groups
 
 router = APIRouter()
@@ -23,6 +24,7 @@ async def logs_page(
     app_id: str = None,
     model: str = None,
     key_id: str = None,
+    service_id: str = None,
     page: int = 1,
 ):
     """Usage logs page with filtering and pagination."""
@@ -83,6 +85,7 @@ async def logs_page(
     total_pages = 1
     app_ids = []
     models = []
+    services_for_filter = []
 
     if api_key_ids:
         # Build filter conditions
@@ -93,6 +96,8 @@ async def logs_page(
             base_conditions.append(UsageLog.app_id == app_id)
         if model:
             base_conditions.append(UsageLog.model == model)
+        if service_id:
+            base_conditions.append(UsageLog.service_id == service_id)
 
         # Get distinct app_ids for filter
         app_ids_result = await db.execute(
@@ -112,6 +117,25 @@ async def logs_page(
         )
         models = [row[0] for row in models_result if row[0] != "unknown"]
 
+        # Get distinct services for filter (services that have usage from these keys)
+        service_ids_result = await db.execute(
+            select(UsageLog.service_id)
+            .where(UsageLog.api_key_id.in_(api_key_ids))
+            .where(UsageLog.service_id.isnot(None))
+            .distinct()
+        )
+        service_ids_with_usage = [row[0] for row in service_ids_result if row[0]]
+
+        # Get service names for dropdown
+        services_for_filter = []
+        if service_ids_with_usage:
+            services_result = await db.execute(
+                select(Service)
+                .where(Service.id.in_(service_ids_with_usage))
+                .order_by(Service.name)
+            )
+            services_for_filter = list(services_result.scalars().all())
+
         # Get total count
         count_result = await db.execute(
             select(func.count(UsageLog.id)).where(*base_conditions)
@@ -122,9 +146,10 @@ async def logs_page(
         # Ensure page is within bounds
         page = max(1, min(page, total_pages))
 
-        # Get logs for current page
+        # Get logs for current page (eager load service relationship)
         logs_result = await db.execute(
             select(UsageLog)
+            .options(selectinload(UsageLog.service))
             .where(*base_conditions)
             .order_by(UsageLog.created_at.desc())
             .offset((page - 1) * per_page)
@@ -148,11 +173,13 @@ async def logs_page(
             "total_pages": total_pages,
             "app_ids": app_ids,
             "models": models,
+            "services": services_for_filter,
             "api_keys": all_api_keys,
             "filter_provider": provider,
             "filter_app_id": app_id,
             "filter_model": model,
             "filter_key_id": key_id,
+            "filter_service_id": service_id,
         },
     )
 

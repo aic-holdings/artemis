@@ -493,6 +493,15 @@ class UsageLog(Base):
     api_key = relationship("APIKey", back_populates="usage_logs")
     provider_key = relationship("ProviderKey", back_populates="usage_logs")
 
+    # Optional relationships for service attribution
+    # These use foreign_keys to avoid ambiguity since service_id/team_id_at_request are nullable strings
+    service = relationship(
+        "Service",
+        primaryjoin="foreign(UsageLog.service_id) == Service.id",
+        viewonly=True,
+        lazy="joined"
+    )
+
 
 class RequestLog(Base):
     """

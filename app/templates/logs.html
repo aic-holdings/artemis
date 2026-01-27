@@ -34,6 +34,12 @@
                     <option value="{{ m }}" {% if filter_model == m %}selected{% endif %}>{{ m }}</option>
                     {% endfor %}
                 </select>
+                <select name="service_id" class="border rounded-lg px-3 py-2 text-sm" onchange="this.form.submit()">
+                    <option value="">All Services</option>
+                    {% for svc in services %}
+                    <option value="{{ svc.id }}" {% if filter_service_id == svc.id %}selected{% endif %}>{{ svc.name }}</option>
+                    {% endfor %}
+                </select>
             </form>
         </div>
     </div>
@@ -46,6 +52,7 @@
                 <thead class="bg-gray-50">
                     <tr class="text-left text-gray-500 text-sm">
                         <th class="px-4 py-3">Timestamp</th>
+                        <th class="px-4 py-3">Service</th>
                         <th class="px-4 py-3">Provider</th>
                         <th class="px-4 py-3">Model</th>
                         <th class="px-4 py-3">Input</th>
@@ -59,6 +66,13 @@
                     {% for log in logs %}
                     <tr class="border-t hover:bg-gray-50">
                         <td class="px-4 py-3 text-sm text-gray-600">{{ log.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                        <td class="px-4 py-3 text-sm">
+                            {% if log.service %}
+                            <a href="/services/{{ log.service.id }}" class="text-indigo-600 hover:text-indigo-800">{{ log.service.name }}</a>
+                            {% else %}
+                            <span class="text-gray-400">-</span>
+                            {% endif %}
+                        </td>
                         <td class="px-4 py-3 capitalize font-medium">{{ log.provider }}</td>
                         <td class="px-4 py-3 text-sm">{{ log.model }}</td>
                         <td class="px-4 py-3 text-sm text-blue-600">{{ "{:,}".format(log.input_tokens) }}</td>
@@ -78,7 +92,7 @@
                 Showing {{ ((page - 1) * per_page) + 1 }} - {{ [page * per_page, total_count]|min }} of {{ total_count }} logs
             </div>
             <div class="flex space-x-2">
-                {% set filter_params %}{% if filter_key_id %}&key_id={{ filter_key_id }}{% endif %}{% if filter_provider %}&provider={{ filter_provider }}{% endif %}{% if filter_app_id %}&app_id={{ filter_app_id }}{% endif %}{% if filter_model %}&model={{ filter_model }}{% endif %}{% endset %}
+                {% set filter_params %}{% if filter_key_id %}&key_id={{ filter_key_id }}{% endif %}{% if filter_provider %}&provider={{ filter_provider }}{% endif %}{% if filter_app_id %}&app_id={{ filter_app_id }}{% endif %}{% if filter_model %}&model={{ filter_model }}{% endif %}{% if filter_service_id %}&service_id={{ filter_service_id }}{% endif %}{% endset %}
 
                 {% if page > 1 %}
                 <a href="?page={{ page - 1 }}{{ filter_params }}"
