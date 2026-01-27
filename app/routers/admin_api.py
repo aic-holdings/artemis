@@ -1450,3 +1450,140 @@ async def check_schema(
     results["all_schema_checks_passed"] = all_passed
 
     return results
+
+
+# =============================================================================
+# Phase 2: Seed Services (Forward-Only - Does NOT touch existing keys)
+# =============================================================================
+
+
+@router.post("/seed-services")
+async def seed_services(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Seed Service records for existing applications.
+
+    IMPORTANT: This is a FORWARD-ONLY migration:
+    - Creates Service records for forge, taskr, watts
+    - Creates "Platform Team" and adds daniel if found
+    - Does NOT modify any existing API keys
+    - Old keys continue working exactly as before
+
+    This is idempotent - safe to run multiple times.
+
+    **Request:**
+    ```
+    POST /api/v1/admin/seed-services
+    Authorization: Bearer <MASTER_API_KEY>
+    ```
+    """
+    await verify_master_key(request)
+
+    results = {"created": [], "existing": [], "notes": []}
+
+    # Find the main organization (non-service account org)
+    org_result = await db.execute(
+        select(Organization)
+        .where(~Organization.name.like("%Service"))  # Exclude service account orgs
+        .order_by(Organization.created_at)
+        .limit(1)
+    )
+    org = org_result.scalar_one_or_none()
+
+    if not org:
+        # Fallback to any org
+        org_result = await db.execute(select(Organization).limit(1))
+        org = org_result.scalar_one_or_none()
+
+    if not org:
+        return {"error": "No organizations found. Create at least one organization first."}
+
+    results["organization"] = {"id": org.id, "name": org.name}
+
+    # Create Platform Team if it doesn't exist
+    team_result = await db.execute(
+        select(Team).where(Team.organization_id == org.id, Team.name == "Platform Team")
+    )
+    team = team_result.scalar_one_or_none()
+
+    if not team:
+        team = Team(
+            organization_id=org.id,
+            name="Platform Team",
+            description="Core platform engineering team",
+            status="active",
+        )
+        db.add(team)
+        await db.flush()
+        results["created"].append(f"Team: Platform Team (id={team.id})")
+    else:
+        results["existing"].append(f"Team: Platform Team (id={team.id})")
+
+    # Find daniel and add to team
+    daniel_result = await db.execute(
+        select(User).where(User.email.like("%daniel%boone%")).limit(1)
+    )
+    daniel = daniel_result.scalar_one_or_none()
+
+    if daniel:
+        # Check if already a member
+        member_result = await db.execute(
+            select(TeamMember).where(TeamMember.team_id == team.id, TeamMember.user_id == daniel.id)
+        )
+        existing_member = member_result.scalar_one_or_none()
+
+        if not existing_member:
+            member = TeamMember(
+                team_id=team.id,
+                user_id=daniel.id,
+                role="admin",
+            )
+            db.add(member)
+            results["created"].append(f"TeamMember: {daniel.email} -> Platform Team")
+        else:
+            results["existing"].append(f"TeamMember: {daniel.email} already in Platform Team")
+    else:
+        results["notes"].append("User daniel not found - team member not created")
+
+    # Create Services for existing applications
+    service_definitions = [
+        {"name": "forge", "description": "AI code assistant"},
+        {"name": "taskr", "description": "Task management and automation"},
+        {"name": "watts", "description": "Analytics and reporting service"},
+    ]
+
+    for svc_def in service_definitions:
+        svc_result = await db.execute(
+            select(Service).where(
+                Service.organization_id == org.id,
+                Service.name == svc_def["name"]
+            )
+        )
+        existing_svc = svc_result.scalar_one_or_none()
+
+        if not existing_svc:
+            service = Service(
+                organization_id=org.id,
+                team_id=team.id,
+                name=svc_def["name"],
+                description=svc_def["description"],
+                status="active",
+            )
+            db.add(service)
+            await db.flush()
+            results["created"].append(f"Service: {svc_def['name']} (id={service.id})")
+        else:
+            results["existing"].append(f"Service: {svc_def['name']} (id={existing_svc.id})")
+
+    await db.commit()
+
+    # Add safety note
+    results["safety_note"] = (
+        "This operation created Service records but did NOT modify any existing API keys. "
+        "Old keys (without service_id) continue working unchanged. "
+        "Only new keys issued via /api/v1/admin/services/{id}/keys will be linked to Services."
+    )
+
+    return results
