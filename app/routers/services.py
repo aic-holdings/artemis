@@ -435,3 +435,41 @@ async def issue_service_key(
         url=f"/services/{service_id}?new_key={full_key}&key_name={key_name}",
         status_code=303
     )
+
+
+@router.post("/services/{service_id}/keys/{key_id}/revoke")
+async def revoke_service_key(
+    service_id: str,
+    key_id: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db)
+):
+    """Revoke an API key for a service (platform admin only)."""
+    ctx = await get_current_user(request, db)
+    if not ctx:
+        return RedirectResponse(url="/login", status_code=303)
+
+    is_platform_admin = getattr(ctx.user, 'is_platform_admin', False)
+    if not is_platform_admin:
+        return RedirectResponse(url=f"/services/{service_id}?error=no_permission", status_code=303)
+
+    # Get the key and verify it belongs to this service
+    key_result = await db.execute(
+        select(APIKey).where(
+            APIKey.id == key_id,
+            APIKey.service_id == service_id
+        )
+    )
+    api_key = key_result.scalar_one_or_none()
+
+    if not api_key:
+        return RedirectResponse(url=f"/services/{service_id}?error=key_not_found", status_code=303)
+
+    if api_key.revoked_at:
+        return RedirectResponse(url=f"/services/{service_id}?error=already_revoked", status_code=303)
+
+    # Revoke the key
+    api_key.revoked_at = utc_now()
+    await db.commit()
+
+    return RedirectResponse(url=f"/services/{service_id}?success=key_revoked", status_code=303)
