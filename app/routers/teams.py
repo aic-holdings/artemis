@@ -355,3 +355,124 @@ async def restore_team(
         await db.commit()
 
     return RedirectResponse(url=f"/teams/{team_id}", status_code=303)
+
+
+@router.post("/teams/{team_id}/members/add")
+async def add_team_member(
+    team_id: str,
+    request: Request,
+    user_email: str = Form(...),
+    role: str = Form("member"),
+    db: AsyncSession = Depends(get_db)
+):
+    """Add a member to a team (platform admin only)."""
+    ctx = await get_current_user(request, db)
+    if not ctx:
+        return RedirectResponse(url="/login", status_code=303)
+
+    is_platform_admin = getattr(ctx.user, 'is_platform_admin', False)
+    if not is_platform_admin:
+        return RedirectResponse(url=f"/teams/{team_id}?error=no_permission", status_code=303)
+
+    # Get team
+    team_result = await db.execute(
+        select(Team).where(Team.id == team_id)
+    )
+    team = team_result.scalar_one_or_none()
+    if not team:
+        return RedirectResponse(url="/teams", status_code=303)
+
+    # Find user by email
+    user_result = await db.execute(
+        select(User).where(User.email == user_email.strip().lower())
+    )
+    user = user_result.scalar_one_or_none()
+    if not user:
+        return RedirectResponse(url=f"/teams/{team_id}?error=user_not_found", status_code=303)
+
+    # Check if already a member
+    existing = await db.execute(
+        select(TeamMember).where(
+            TeamMember.team_id == team_id,
+            TeamMember.user_id == user.id
+        )
+    )
+    if existing.scalar_one_or_none():
+        return RedirectResponse(url=f"/teams/{team_id}?error=already_member", status_code=303)
+
+    # Add member
+    member = TeamMember(
+        team_id=team_id,
+        user_id=user.id,
+        role=role if role in ["admin", "member"] else "member",
+        added_by_user_id=ctx.user.id,
+    )
+    db.add(member)
+    await db.commit()
+
+    return RedirectResponse(url=f"/teams/{team_id}?success=member_added", status_code=303)
+
+
+@router.post("/teams/{team_id}/members/{member_id}/remove")
+async def remove_team_member(
+    team_id: str,
+    member_id: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db)
+):
+    """Remove a member from a team (platform admin only)."""
+    ctx = await get_current_user(request, db)
+    if not ctx:
+        return RedirectResponse(url="/login", status_code=303)
+
+    is_platform_admin = getattr(ctx.user, 'is_platform_admin', False)
+    if not is_platform_admin:
+        return RedirectResponse(url=f"/teams/{team_id}?error=no_permission", status_code=303)
+
+    # Get and remove the member
+    member_result = await db.execute(
+        select(TeamMember).where(
+            TeamMember.id == member_id,
+            TeamMember.team_id == team_id
+        )
+    )
+    member = member_result.scalar_one_or_none()
+
+    if member:
+        await db.delete(member)
+        await db.commit()
+
+    return RedirectResponse(url=f"/teams/{team_id}?success=member_removed", status_code=303)
+
+
+@router.post("/teams/{team_id}/members/{member_id}/role")
+async def change_member_role(
+    team_id: str,
+    member_id: str,
+    request: Request,
+    role: str = Form(...),
+    db: AsyncSession = Depends(get_db)
+):
+    """Change a team member's role (platform admin only)."""
+    ctx = await get_current_user(request, db)
+    if not ctx:
+        return RedirectResponse(url="/login", status_code=303)
+
+    is_platform_admin = getattr(ctx.user, 'is_platform_admin', False)
+    if not is_platform_admin:
+        return RedirectResponse(url=f"/teams/{team_id}?error=no_permission", status_code=303)
+
+    # Get the member
+    member_result = await db.execute(
+        select(TeamMember).where(
+            TeamMember.id == member_id,
+            TeamMember.team_id == team_id
+        )
+    )
+    member = member_result.scalar_one_or_none()
+
+    if member:
+        member.role = role if role in ["admin", "member"] else "member"
+        await db.commit()
+
+    return RedirectResponse(url=f"/teams/{team_id}?success=role_changed", status_code=303)
