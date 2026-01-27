@@ -383,6 +383,110 @@ def extract_usage_from_response(provider: str, response_data: dict) -> tuple[str
 # ============================================================================
 # Claude SDK Compatibility Endpoint
 # ============================================================================
+# Model-to-provider detection for OpenAI-compatible endpoints
+# ============================================================================
+
+
+def detect_provider_from_model(model: str) -> str:
+    """
+    Detect the LLM provider from the model name.
+
+    Patterns:
+    - OpenAI: gpt-*, o1-*, text-embedding-*, dall-e-*, chatgpt-*
+    - Anthropic: claude-*
+    - Google: gemini-*, models/gemini-*
+    - Perplexity: *sonar*, pplx-*
+    - OpenRouter: contains "/" (e.g., meta-llama/llama-3.1-8b-instruct)
+
+    Returns the provider ID or "openrouter" as default fallback.
+    """
+    model_lower = model.lower()
+
+    # OpenAI models
+    if any(model_lower.startswith(p) for p in ["gpt-", "o1-", "o3-", "text-embedding-", "dall-e-", "chatgpt-"]):
+        return "openai"
+
+    # Anthropic models
+    if model_lower.startswith("claude-"):
+        return "anthropic"
+
+    # Google models
+    if model_lower.startswith("gemini-") or model_lower.startswith("models/gemini-"):
+        return "google"
+
+    # Perplexity models
+    if "sonar" in model_lower or model_lower.startswith("pplx-"):
+        return "perplexity"
+
+    # OpenRouter format: provider/model (e.g., meta-llama/llama-3.1-8b-instruct)
+    # Also catches any model with "/" as it's likely OpenRouter
+    if "/" in model:
+        return "openrouter"
+
+    # Default to OpenRouter as it supports many models
+    return "openrouter"
+
+
+# ============================================================================
+# OpenAI-compatible /v1/chat/completions endpoint
+# Auto-detects provider from model name for seamless SDK compatibility
+# ============================================================================
+
+
+@router.api_route("/v1/chat/completions", methods=["POST"])
+async def openai_chat_completions_endpoint(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    OpenAI-compatible chat completions endpoint.
+
+    Auto-detects the provider from the model name and routes accordingly.
+    This allows clients to use the standard OpenAI SDK format without
+    specifying the provider in the URL.
+
+    Usage:
+        POST /v1/chat/completions
+        Authorization: Bearer art_xxx
+
+        {
+            "model": "meta-llama/llama-3.1-8b-instruct",  # Routes to OpenRouter
+            "messages": [{"role": "user", "content": "Hello"}]
+        }
+
+        {
+            "model": "gpt-4o",  # Routes to OpenAI
+            "messages": [{"role": "user", "content": "Hello"}]
+        }
+    """
+    # Parse request body to get model
+    try:
+        body = await request.body()
+        body_json = json.loads(body) if body else {}
+        model = body_json.get("model", "")
+    except json.JSONDecodeError:
+        return make_error_response(
+            400, "invalid_request", "Invalid JSON in request body"
+        )
+
+    if not model:
+        return make_error_response(
+            400, "invalid_request", "Missing 'model' field in request body"
+        )
+
+    # Detect provider from model name
+    provider = detect_provider_from_model(model)
+
+    # Route through the main proxy handler
+    return await proxy_request(
+        provider=provider,
+        path="chat/completions",
+        request=request,
+        db=db,
+    )
+
+
+# ============================================================================
 # The Claude Agent SDK expects to POST to {base_url}/v1/messages
 # This endpoint provides that interface, routing through OpenRouter
 # ============================================================================
