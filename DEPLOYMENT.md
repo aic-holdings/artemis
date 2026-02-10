@@ -90,17 +90,7 @@ In the application settings, add:
 
 ### 4. DNS
 
-Add A record:
-```
-artemis.jettaintelligence.com → 80.209.241.157
-```
-
-Or use the hostkey-server DNS script:
-```bash
-# In hostkey-server repo
-source .aws-credentials
-./scripts/dns/route53-manage.sh add artemis
-```
+Artemis is deployed on Railway (project: amusing-generosity). DNS is managed via Railway's custom domain feature — no manual A record needed. The old Coolify deployment on `80.209.241.157` is deprecated.
 
 ---
 
@@ -157,17 +147,12 @@ openssl rand -hex 32
 
 Push to `main` branch triggers automatic deployment via GitHub webhook.
 
-### Via API (Manual)
+### Via Railway (Manual)
 
 ```bash
-# Get app UUID
-APP_UUID=$(curl -s -H "Authorization: Bearer $COOLIFY_TOKEN" \
-  "http://80.209.241.157:8000/api/v1/applications" | \
-  jq -r '.[] | select(.name=="artemis") | .uuid')
-
-# Trigger redeploy
-curl -X GET -H "Authorization: Bearer $COOLIFY_TOKEN" \
-  "http://80.209.241.157:8000/api/v1/applications/$APP_UUID/restart"
+# Artemis is now on Railway (project: amusing-generosity)
+# Redeploy via Railway CLI or dashboard
+railway redeploy
 ```
 
 ---
